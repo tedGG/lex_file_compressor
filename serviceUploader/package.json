@@ -12,8 +12,10 @@
   "license": "ISC",
   "dependencies": {
     "axios": "^1.13.2",
+    "canvas": "^3.2.1",
     "dotenv": "^17.2.3",
     "express": "^5.1.0",
-    "jsforce": "^3.10.8"
+    "pdf-lib": "^1.17.1",
+    "pdfjs-dist": "^3.11.174"
   }
 }
