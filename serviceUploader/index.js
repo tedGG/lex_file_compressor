@@ -26,11 +26,66 @@ const port = process.env.PORT || 4000;
 
 const salesforce = require("./salesforce");
 
-app.get("/wakeup", (req, res) => {
-  res.send("PDF Compression API is running");
+let isServerReady = false;
+
+async function warmUpServer() {
+  if (isServerReady) return true;
+  
+  console.log("Warming up server...");
+  
+  try {
+    const testCanvas = createCanvas(100, 100);
+    console.log("✓ Canvas initialized");
+    
+    const testPdf = await PDFDocument.create();
+    console.log("✓ PDF-lib ready");
+    
+    if (pdfjsLib) {
+      console.log("✓ pdfjs-dist ready");
+    }
+    
+    await new Promise(resolve => setTimeout(resolve, 2000)); // 2 second buffer
+    
+    isServerReady = true;
+    console.log("✓ Server is fully ready!");
+    return true;
+  } catch (err) {
+    console.error("Server warm-up failed:", err);
+    return false;
+  }
+}
+
+app.get("/wakeup", async (req, res) => {
+  console.log("Wakeup request received");
+  
+  try {
+    const ready = await warmUpServer();
+    
+    if (ready) {
+      res.status(200).json({ 
+        status: "ready",
+        message: "PDF Compression API is fully initialized and ready"
+      });
+    } else {
+      res.status(503).json({ 
+        status: "warming_up",
+        message: "Server is still initializing, please try again"
+      });
+    }
+  } catch (err) {
+    console.error("Wakeup error:", err);
+    res.status(500).json({ 
+      status: "error",
+      message: "Server initialization failed"
+    });
+  }
 });
 
 app.post("/compress", async (req, res) => {
+  if (!isServerReady) {
+    await warmUpServer();
+  }
+  
   const { basicurl, contverid, parentid, quality = 50, scaleFactor = 100 } = req.body;
 
   if (!basicurl || !contverid) {
@@ -43,7 +98,6 @@ app.post("/compress", async (req, res) => {
   try {
     console.log(`Compressing PDF — ContentVersion: ${contverid}, quality: ${quality}%, scale: ${scaleFactor}%`);
 
-    // Get file info (title, ContentDocumentId) and file data in parallel
     const [fileInfo, pdfBuffer] = await Promise.all([
       salesforce.getFileInfo(basicurl, contverid),
       salesforce.getFile(basicurl, contverid)
@@ -62,7 +116,6 @@ app.post("/compress", async (req, res) => {
 
     console.log(`Compressed: ${(compressedSize / 1024).toFixed(1)} KB (${reductionPercent}% reduction)`);
 
-    // Save compressed file back to Salesforce
     const title = fileInfo.Title + '_compressed';
     const saved = await salesforce.saveFile(
       basicurl,
@@ -134,6 +187,6 @@ async function compressPdf(pdfBytes, quality, scale) {
 
 app.listen(port, () => {
   console.log(`PDF Compression API running on port ${port}`);
-  console.log(`  GET  /wakeup   — Health check`);
+  console.log(`  GET  /wakeup   — Health check & warm-up`);
   console.log(`  POST /compress — Compress a Salesforce PDF`);
 });

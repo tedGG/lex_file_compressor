@@ -62,10 +62,8 @@ class SalesforceConnection {
     };
 
     if (parentId) {
-      // Creates a new file linked to the parent record (Opportunity, Account, etc.)
       body.FirstPublishLocationId = parentId;
     } else if (contentDocumentId) {
-      // Adds as a new version of the existing document
       body.ContentDocumentId = contentDocumentId;
     }
 
