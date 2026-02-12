@@ -5,6 +5,22 @@ const { createCanvas } = require("canvas");
 const { PDFDocument } = require("pdf-lib");
 const pdfjsLib = require("pdfjs-dist/legacy/build/pdf.js");
 
+// Node-canvas factory for pdfjs-dist (it can't use browser DOM)
+class NodeCanvasFactory {
+  create(width, height) {
+    const canvas = createCanvas(width, height);
+    return { canvas, context: canvas.getContext("2d") };
+  }
+  reset(canvasAndContext, width, height) {
+    canvasAndContext.canvas.width = width;
+    canvasAndContext.canvas.height = height;
+  }
+  destroy(canvasAndContext) {
+    canvasAndContext.canvas.width = 0;
+    canvasAndContext.canvas.height = 0;
+  }
+}
+
 const app = express();
 app.use(express.json({ limit: "100mb" }));
 const port = process.env.PORT || 4000;
@@ -67,7 +83,8 @@ app.post("/compress", async (req, res) => {
 
 // Core compression: rasterize each page to JPEG, rebuild PDF
 async function compressPdf(pdfBytes, quality, scale) {
-  const loadingTask = pdfjsLib.getDocument({ data: pdfBytes, useSystemFonts: true });
+  const canvasFactory = new NodeCanvasFactory();
+  const loadingTask = pdfjsLib.getDocument({ data: pdfBytes, useSystemFonts: true, canvasFactory });
   const pdfDoc = await loadingTask.promise;
   const numPages = pdfDoc.numPages;
   console.log(`Processing ${numPages} page(s)`);
@@ -79,12 +96,14 @@ async function compressPdf(pdfBytes, quality, scale) {
     const originalViewport = page.getViewport({ scale: 1.0 });
     const viewport = page.getViewport({ scale });
 
-    // Render page to node-canvas
-    const canvas = createCanvas(Math.floor(viewport.width), Math.floor(viewport.height));
-    const ctx = canvas.getContext("2d");
+    // Render page to node-canvas via factory
+    const { canvas, context } = canvasFactory.create(
+      Math.floor(viewport.width),
+      Math.floor(viewport.height)
+    );
 
     await page.render({
-      canvasContext: ctx,
+      canvasContext: context,
       viewport
     }).promise;
 
