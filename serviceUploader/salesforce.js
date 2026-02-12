@@ -37,6 +37,48 @@ class SalesforceConnection {
     console.log('File downloaded from Salesforce');
     return response.data;
   }
+
+  async getFileInfo(basicUrl, contVerId) {
+    const accessToken = await this.getToken(basicUrl);
+    const url = `${basicUrl}/services/data/v58.0/sobjects/ContentVersion/${contVerId}?fields=Title,ContentDocumentId`;
+
+    const response = await axios.get(url, {
+      headers: { Authorization: `Bearer ${accessToken}` }
+    });
+
+    return response.data;
+  }
+
+  async saveFile(basicUrl, title, pdfBytes, { contentDocumentId, parentId }) {
+    const accessToken = await this.getToken(basicUrl);
+    const url = `${basicUrl}/services/data/v58.0/sobjects/ContentVersion`;
+
+    const base64Data = Buffer.from(pdfBytes).toString('base64');
+
+    const body = {
+      Title: title,
+      PathOnClient: title + '.pdf',
+      VersionData: base64Data
+    };
+
+    if (parentId) {
+      // Creates a new file linked to the parent record (Opportunity, Account, etc.)
+      body.FirstPublishLocationId = parentId;
+    } else if (contentDocumentId) {
+      // Adds as a new version of the existing document
+      body.ContentDocumentId = contentDocumentId;
+    }
+
+    const response = await axios.post(url, body, {
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        'Content-Type': 'application/json'
+      }
+    });
+
+    console.log('File saved to Salesforce:', response.data.id);
+    return response.data;
+  }
 }
 
 module.exports = new SalesforceConnection();

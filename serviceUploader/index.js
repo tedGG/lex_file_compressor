@@ -5,7 +5,6 @@ const { createCanvas } = require("canvas");
 const { PDFDocument } = require("pdf-lib");
 const pdfjsLib = require("pdfjs-dist/legacy/build/pdf.js");
 
-// Node-canvas factory for pdfjs-dist (it can't use browser DOM)
 class NodeCanvasFactory {
   create(width, height) {
     const canvas = createCanvas(width, height);
@@ -27,14 +26,12 @@ const port = process.env.PORT || 4000;
 
 const salesforce = require("./salesforce");
 
-// Health check
 app.get("/wakeup", (req, res) => {
   res.send("PDF Compression API is running");
 });
 
-// PDF Compression endpoint
 app.post("/compress", async (req, res) => {
-  const { basicurl, contverid, quality = 50, scaleFactor = 100 } = req.body;
+  const { basicurl, contverid, parentid, quality = 50, scaleFactor = 100 } = req.body;
 
   if (!basicurl || !contverid) {
     return res.status(400).json({
@@ -46,12 +43,15 @@ app.post("/compress", async (req, res) => {
   try {
     console.log(`Compressing PDF — ContentVersion: ${contverid}, quality: ${quality}%, scale: ${scaleFactor}%`);
 
-    // Fetch PDF from Salesforce
-    const pdfBuffer = await salesforce.getFile(basicurl, contverid);
+    // Get file info (title, ContentDocumentId) and file data in parallel
+    const [fileInfo, pdfBuffer] = await Promise.all([
+      salesforce.getFileInfo(basicurl, contverid),
+      salesforce.getFile(basicurl, contverid)
+    ]);
+
     const originalSize = pdfBuffer.byteLength;
     console.log(`Original size: ${(originalSize / 1024).toFixed(1)} KB`);
 
-    // Compress
     const compressedBytes = await compressPdf(
       new Uint8Array(pdfBuffer),
       quality / 100,
@@ -62,15 +62,24 @@ app.post("/compress", async (req, res) => {
 
     console.log(`Compressed: ${(compressedSize / 1024).toFixed(1)} KB (${reductionPercent}% reduction)`);
 
-    // Convert to base64
-    const base64Data = Buffer.from(compressedBytes).toString("base64");
+    // Save compressed file back to Salesforce
+    const title = fileInfo.Title + '_compressed';
+    const saved = await salesforce.saveFile(
+      basicurl,
+      title,
+      compressedBytes,
+      {
+        contentDocumentId: parentid ? undefined : fileInfo.ContentDocumentId,
+        parentId: parentid
+      }
+    );
 
     res.json({
       success: true,
       originalSize,
       compressedSize,
       reductionPercent: parseFloat(reductionPercent),
-      base64Data
+      contentVersionId: saved.id
     });
   } catch (err) {
     console.error("Compression error:", err);
@@ -81,7 +90,6 @@ app.post("/compress", async (req, res) => {
   }
 });
 
-// Core compression: rasterize each page to JPEG, rebuild PDF
 async function compressPdf(pdfBytes, quality, scale) {
   const canvasFactory = new NodeCanvasFactory();
   const loadingTask = pdfjsLib.getDocument({ data: pdfBytes, useSystemFonts: true, canvasFactory });
@@ -96,7 +104,6 @@ async function compressPdf(pdfBytes, quality, scale) {
     const originalViewport = page.getViewport({ scale: 1.0 });
     const viewport = page.getViewport({ scale });
 
-    // Render page to node-canvas via factory
     const { canvas, context } = canvasFactory.create(
       Math.floor(viewport.width),
       Math.floor(viewport.height)
@@ -107,10 +114,8 @@ async function compressPdf(pdfBytes, quality, scale) {
       viewport
     }).promise;
 
-    // Convert to JPEG buffer
     const jpegBuffer = canvas.toBuffer("image/jpeg", { quality });
 
-    // Add to new PDF at original dimensions
     const img = await newPdf.embedJpg(jpegBuffer);
     const newPage = newPdf.addPage([originalViewport.width, originalViewport.height]);
     newPage.drawImage(img, {
