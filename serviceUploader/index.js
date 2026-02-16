@@ -106,17 +106,10 @@ app.post("/compress", async (req, res) => {
     const originalSize = pdfBuffer.byteLength;
     console.log(`Original size: ${(originalSize / 1024).toFixed(1)} KB`);
 
-    // Check if file is too large for free tier (will timeout)
-    const estimatedTime = (originalSize / 1024 / 1024) * 3; // ~3 seconds per MB
+    // Warn about potential timeout but let it try
+    const estimatedTime = (originalSize / 1024 / 1024) * (quality / 100) * (scaleFactor / 100) * 2;
     if (estimatedTime > 25) {
-      console.log(`❌ File rejected - estimated time: ${estimatedTime.toFixed(0)}s exceeds 25s limit`);
-      return res.status(413).json({
-        success: false,
-        error: "File too large for free tier (will timeout)",
-        suggestion: "Try reducing quality/scale or use smaller files",
-        estimatedTime: `${estimatedTime.toFixed(0)}s`,
-        maxTime: "25s"
-      });
+      console.log(`⚠️  Warning - estimated time: ${estimatedTime.toFixed(0)}s may exceed 30s Render limit`);
     }
 
     const compressedBytes = await compressPdf(
