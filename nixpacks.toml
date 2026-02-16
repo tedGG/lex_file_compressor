@@ -1,0 +1,16 @@
+[phases.setup]
+nixPkgs = [
+  "nodejs_18",
+  "cairo",
+  "pango",
+  "libjpeg",
+  "giflib",
+  "librsvg",
+  "pixman"
+]
+
+[phases.install]
+cmds = ["cd serviceUploader && npm ci --prefer-offline --no-audit"]
+
+[start]
+cmd = "cd serviceUploader && npm start"
