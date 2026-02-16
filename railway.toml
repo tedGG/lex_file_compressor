@@ -1,8 +1,10 @@
 [build]
 builder = "nixpacks"
-buildCommand = "cd serviceUploader && npm install"
 
 [deploy]
 startCommand = "cd serviceUploader && npm start"
 restartPolicyType = "on_failure"
 restartPolicyMaxRetries = 10
+
+[nixpacks]
+nixpkgsArchive = "stable"
