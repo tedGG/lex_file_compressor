@@ -307,7 +307,7 @@ async function compressPdf(pdfBytes, quality, scale, onProgress) {
 }
 
 app.listen(port, '0.0.0.0', () => {
-  console.log(`PDF Compression API running on port ${port}`);
+  console.log(`PDF Compression API running on port: ${port}`);
   console.log(`  GET  /wakeup              — Health check & warm-up`);
   console.log(`  POST /compress            — Start compression job (async)`);
   console.log(`  GET  /compress/status/:id — Check job status`);
