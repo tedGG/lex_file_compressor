@@ -106,6 +106,18 @@ app.post("/compress", async (req, res) => {
     const originalSize = pdfBuffer.byteLength;
     console.log(`Original size: ${(originalSize / 1024).toFixed(1)} KB`);
 
+    // Check if file is too large for free tier (will timeout)
+    const estimatedTime = (originalSize / 1024 / 1024) * 3; // ~3 seconds per MB
+    if (estimatedTime > 25) {
+      return res.status(413).json({
+        success: false,
+        error: "File too large for free tier (will timeout)",
+        suggestion: "Try reducing quality/scale or use smaller files",
+        estimatedTime: `${estimatedTime.toFixed(0)}s`,
+        maxTime: "25s"
+      });
+    }
+
     const compressedBytes = await compressPdf(
       new Uint8Array(pdfBuffer),
       quality / 100,
@@ -177,6 +189,9 @@ async function compressPdf(pdfBytes, quality, scale) {
       width: originalViewport.width,
       height: originalViewport.height
     });
+
+    // Explicitly clean up canvas to free memory
+    canvasFactory.destroy({ canvas, context });
 
     console.log(`  Page ${i}/${numPages} done`);
   }

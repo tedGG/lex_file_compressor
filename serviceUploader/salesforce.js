@@ -31,7 +31,10 @@ class SalesforceConnection {
       responseType: 'arraybuffer',
       headers: {
         Authorization: `Bearer ${accessToken}`
-      }
+      },
+      maxContentLength: 50 * 1024 * 1024, // 50MB
+      maxBodyLength: 50 * 1024 * 1024,
+      timeout: 25000 // 25 seconds (under Render's 30s limit)
     });
 
     console.log('File downloaded from Salesforce');
@@ -71,7 +74,10 @@ class SalesforceConnection {
       headers: {
         Authorization: `Bearer ${accessToken}`,
         'Content-Type': 'application/json'
-      }
+      },
+      maxContentLength: 50 * 1024 * 1024, // 50MB
+      maxBodyLength: 50 * 1024 * 1024,
+      timeout: 25000 // 25 seconds (under Render's 30s limit)
     });
 
     console.log('File saved to Salesforce:', response.data.id);
