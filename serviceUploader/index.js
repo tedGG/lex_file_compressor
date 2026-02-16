@@ -111,29 +111,88 @@ app.post("/compress", async (req, res) => {
     });
   }
 
-  // Create job and return immediately
-  const jobId = createJobId();
-  const job = {
-    id: jobId,
-    status: "queued",
-    message: "Job created, waiting to start",
-    createdAt: Date.now(),
-    params: { basicurl, contverid, parentid, quality, scaleFactor }
-  };
+  try {
+    console.log(`Compressing PDF — ContentVersion: ${contverid}, quality: ${quality}%, scale: ${scaleFactor}%`);
 
-  jobs.set(jobId, job);
-  console.log(`[Job ${jobId}] Created - ContentVersion: ${contverid}, quality: ${quality}%, scale: ${scaleFactor}%`);
+    // Download file to check size
+    const [fileInfo, pdfBuffer] = await Promise.all([
+      salesforce.getFileInfo(basicurl, contverid),
+      salesforce.getFile(basicurl, contverid)
+    ]);
 
-  // Start processing in background
-  setImmediate(() => processCompressionJob(jobId));
+    const originalSize = pdfBuffer.byteLength;
+    const sizeMB = originalSize / (1024 * 1024);
+    console.log(`Original size: ${(originalSize / 1024).toFixed(1)} KB (${sizeMB.toFixed(1)} MB)`);
 
-  // Return immediately
-  res.json({
-    success: true,
-    jobId,
-    message: "Compression job started",
-    statusUrl: `/compress/status/${jobId}`
-  });
+    // For files >= 20MB, use async processing
+    if (sizeMB >= 20) {
+      const jobId = createJobId();
+      const job = {
+        id: jobId,
+        status: "queued",
+        message: "Job created, waiting to start",
+        createdAt: Date.now(),
+        params: { basicurl, contverid, parentid, quality, scaleFactor },
+        fileInfo,
+        pdfBuffer,
+        originalSize
+      };
+
+      jobs.set(jobId, job);
+      console.log(`[Job ${jobId}] Large file - using async processing`);
+
+      // Start processing in background
+      setImmediate(() => processCompressionJob(jobId));
+
+      // Return immediately
+      return res.json({
+        success: true,
+        jobId,
+        message: "Large file - compression job started",
+        statusUrl: `/compress/status/${jobId}`,
+        async: true
+      });
+    }
+
+    // For files < 20MB, process synchronously
+    console.log(`Small file - processing synchronously`);
+
+    const compressedBytes = await compressPdf(
+      new Uint8Array(pdfBuffer),
+      quality / 100,
+      scaleFactor / 100
+    );
+    const compressedSize = compressedBytes.length;
+    const reductionPercent = ((1 - compressedSize / originalSize) * 100).toFixed(1);
+
+    console.log(`Compressed: ${(compressedSize / 1024).toFixed(1)} KB (${reductionPercent}% reduction)`);
+
+    const title = fileInfo.Title + '_compressed';
+    const saved = await salesforce.saveFile(
+      basicurl,
+      title,
+      compressedBytes,
+      {
+        contentDocumentId: parentid ? undefined : fileInfo.ContentDocumentId,
+        parentId: parentid
+      }
+    );
+
+    res.json({
+      success: true,
+      originalSize,
+      compressedSize,
+      reductionPercent: parseFloat(reductionPercent),
+      contentVersionId: saved.id,
+      async: false
+    });
+  } catch (err) {
+    console.error("Compression error:", err);
+    res.status(500).json({
+      success: false,
+      error: err.message
+    });
+  }
 });
 
 app.get("/compress/status/:jobId", (req, res) => {
@@ -165,22 +224,10 @@ async function processCompressionJob(jobId) {
   const job = jobs.get(jobId);
   if (!job) return;
 
-  const { basicurl, contverid, parentid, quality, scaleFactor } = job.params;
+  const { basicurl, parentid, quality, scaleFactor } = job.params;
+  const { fileInfo, pdfBuffer, originalSize } = job;
 
   try {
-    updateJobStatus(jobId, {
-      status: "downloading",
-      message: "Downloading file from Salesforce",
-      progress: 10
-    });
-
-    const [fileInfo, pdfBuffer] = await Promise.all([
-      salesforce.getFileInfo(basicurl, contverid),
-      salesforce.getFile(basicurl, contverid)
-    ]);
-
-    const originalSize = pdfBuffer.byteLength;
-    console.log(`[Job ${jobId}] Original size: ${(originalSize / 1024).toFixed(1)} KB`);
 
     updateJobStatus(jobId, {
       status: "processing",
