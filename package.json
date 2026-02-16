@@ -1,0 +1,11 @@
+{
+  "name": "lex_file_compressor",
+  "version": "1.0.0",
+  "scripts": {
+    "postinstall": "cd serviceUploader && npm install",
+    "start": "cd serviceUploader && npm start"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}
