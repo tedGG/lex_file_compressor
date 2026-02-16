@@ -4,6 +4,7 @@ require("dotenv").config();
 const { createCanvas } = require("canvas");
 const { PDFDocument } = require("pdf-lib");
 const pdfjsLib = require("pdfjs-dist/legacy/build/pdf.js");
+const crypto = require("crypto");
 
 class NodeCanvasFactory {
   create(width, height) {
@@ -27,6 +28,21 @@ const port = process.env.PORT || 4000;
 const salesforce = require("./salesforce");
 
 let isServerReady = false;
+
+// Job queue for async processing
+const jobs = new Map();
+
+function createJobId() {
+  return crypto.randomBytes(8).toString("hex");
+}
+
+function updateJobStatus(jobId, updates) {
+  const job = jobs.get(jobId);
+  if (job) {
+    Object.assign(job, updates);
+    console.log(`[Job ${jobId}] Status: ${job.status} ${job.message || ''}`);
+  }
+}
 
 async function warmUpServer() {
   if (isServerReady) return true;
@@ -85,7 +101,7 @@ app.post("/compress", async (req, res) => {
   if (!isServerReady) {
     await warmUpServer();
   }
-  
+
   const { basicurl, contverid, parentid, quality = 50, scaleFactor = 100 } = req.body;
 
   if (!basicurl || !contverid) {
@@ -95,8 +111,68 @@ app.post("/compress", async (req, res) => {
     });
   }
 
+  // Create job and return immediately
+  const jobId = createJobId();
+  const job = {
+    id: jobId,
+    status: "queued",
+    message: "Job created, waiting to start",
+    createdAt: Date.now(),
+    params: { basicurl, contverid, parentid, quality, scaleFactor }
+  };
+
+  jobs.set(jobId, job);
+  console.log(`[Job ${jobId}] Created - ContentVersion: ${contverid}, quality: ${quality}%, scale: ${scaleFactor}%`);
+
+  // Start processing in background
+  setImmediate(() => processCompressionJob(jobId));
+
+  // Return immediately
+  res.json({
+    success: true,
+    jobId,
+    message: "Compression job started",
+    statusUrl: `/compress/status/${jobId}`
+  });
+});
+
+app.get("/compress/status/:jobId", (req, res) => {
+  const job = jobs.get(req.params.jobId);
+
+  if (!job) {
+    return res.status(404).json({
+      success: false,
+      error: "Job not found"
+    });
+  }
+
+  res.json({
+    success: true,
+    job: {
+      id: job.id,
+      status: job.status,
+      message: job.message,
+      progress: job.progress,
+      createdAt: job.createdAt,
+      completedAt: job.completedAt,
+      result: job.result,
+      error: job.error
+    }
+  });
+});
+
+async function processCompressionJob(jobId) {
+  const job = jobs.get(jobId);
+  if (!job) return;
+
+  const { basicurl, contverid, parentid, quality, scaleFactor } = job.params;
+
   try {
-    console.log(`Compressing PDF — ContentVersion: ${contverid}, quality: ${quality}%, scale: ${scaleFactor}%`);
+    updateJobStatus(jobId, {
+      status: "downloading",
+      message: "Downloading file from Salesforce",
+      progress: 10
+    });
 
     const [fileInfo, pdfBuffer] = await Promise.all([
       salesforce.getFileInfo(basicurl, contverid),
@@ -104,23 +180,40 @@ app.post("/compress", async (req, res) => {
     ]);
 
     const originalSize = pdfBuffer.byteLength;
-    console.log(`Original size: ${(originalSize / 1024).toFixed(1)} KB`);
+    console.log(`[Job ${jobId}] Original size: ${(originalSize / 1024).toFixed(1)} KB`);
 
-    // Warn about potential timeout but let it try
-    const estimatedTime = (originalSize / 1024 / 1024) * (quality / 100) * (scaleFactor / 100) * 2;
-    if (estimatedTime > 25) {
-      console.log(`⚠️  Warning - estimated time: ${estimatedTime.toFixed(0)}s may exceed 30s Render limit`);
-    }
+    updateJobStatus(jobId, {
+      status: "processing",
+      message: `Processing PDF (${(originalSize / 1024).toFixed(1)} KB)`,
+      progress: 30,
+      originalSize
+    });
 
     const compressedBytes = await compressPdf(
       new Uint8Array(pdfBuffer),
       quality / 100,
-      scaleFactor / 100
+      scaleFactor / 100,
+      (page, total) => {
+        const progress = 30 + Math.floor((page / total) * 50);
+        updateJobStatus(jobId, {
+          progress,
+          message: `Processing page ${page}/${total}`
+        });
+      }
     );
+
     const compressedSize = compressedBytes.length;
     const reductionPercent = ((1 - compressedSize / originalSize) * 100).toFixed(1);
 
-    console.log(`Compressed: ${(compressedSize / 1024).toFixed(1)} KB (${reductionPercent}% reduction)`);
+    console.log(`[Job ${jobId}] Compressed: ${(compressedSize / 1024).toFixed(1)} KB (${reductionPercent}% reduction)`);
+
+    updateJobStatus(jobId, {
+      status: "uploading",
+      message: "Uploading compressed file to Salesforce",
+      progress: 85,
+      compressedSize,
+      reductionPercent: parseFloat(reductionPercent)
+    });
 
     const title = fileInfo.Title + '_compressed';
     const saved = await salesforce.saveFile(
@@ -133,23 +226,37 @@ app.post("/compress", async (req, res) => {
       }
     );
 
-    res.json({
-      success: true,
-      originalSize,
-      compressedSize,
-      reductionPercent: parseFloat(reductionPercent),
-      contentVersionId: saved.id
+    updateJobStatus(jobId, {
+      status: "completed",
+      message: "Compression completed successfully",
+      progress: 100,
+      completedAt: Date.now(),
+      result: {
+        originalSize,
+        compressedSize,
+        reductionPercent: parseFloat(reductionPercent),
+        contentVersionId: saved.id
+      }
     });
-  } catch (err) {
-    console.error("Compression error:", err);
-    res.status(500).json({
-      success: false,
-      error: err.message
-    });
-  }
-});
 
-async function compressPdf(pdfBytes, quality, scale) {
+    // Clean up job after 1 hour
+    setTimeout(() => jobs.delete(jobId), 60 * 60 * 1000);
+
+  } catch (err) {
+    console.error(`[Job ${jobId}] Error:`, err.message);
+    updateJobStatus(jobId, {
+      status: "failed",
+      message: "Compression failed",
+      error: err.message,
+      completedAt: Date.now()
+    });
+
+    // Clean up failed job after 10 minutes
+    setTimeout(() => jobs.delete(jobId), 10 * 60 * 1000);
+  }
+}
+
+async function compressPdf(pdfBytes, quality, scale, onProgress) {
   const canvasFactory = new NodeCanvasFactory();
   const loadingTask = pdfjsLib.getDocument({ data: pdfBytes, useSystemFonts: true, canvasFactory });
   const pdfDoc = await loadingTask.promise;
@@ -188,6 +295,11 @@ async function compressPdf(pdfBytes, quality, scale) {
     canvasFactory.destroy({ canvas, context });
 
     console.log(`  Page ${i}/${numPages} done`);
+
+    // Report progress
+    if (onProgress) {
+      onProgress(i, numPages);
+    }
   }
 
   pdfDoc.destroy();
@@ -196,6 +308,7 @@ async function compressPdf(pdfBytes, quality, scale) {
 
 app.listen(port, () => {
   console.log(`PDF Compression API running on port ${port}`);
-  console.log(`  GET  /wakeup   — Health check & warm-up`);
-  console.log(`  POST /compress — Compress a Salesforce PDF`);
+  console.log(`  GET  /wakeup              — Health check & warm-up`);
+  console.log(`  POST /compress            — Start compression job (async)`);
+  console.log(`  GET  /compress/status/:id — Check job status`);
 });
