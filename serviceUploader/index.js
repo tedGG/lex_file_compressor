@@ -109,6 +109,7 @@ app.post("/compress", async (req, res) => {
     // Check if file is too large for free tier (will timeout)
     const estimatedTime = (originalSize / 1024 / 1024) * 3; // ~3 seconds per MB
     if (estimatedTime > 25) {
+      console.log(`❌ File rejected - estimated time: ${estimatedTime.toFixed(0)}s exceeds 25s limit`);
       return res.status(413).json({
         success: false,
         error: "File too large for free tier (will timeout)",
