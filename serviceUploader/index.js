@@ -7,7 +7,7 @@ const { PDFDocument } = require("pdf-lib");
 const pdfjsLib = require("pdfjs-dist/legacy/build/pdf.js");
 const crypto = require("crypto");
 
-const STANDARD_FONT_DATA_URL = `file://${path.join(path.dirname(require.resolve("pdfjs-dist/package.json")), "standard_fonts")}/`;
+const STANDARD_FONT_DATA_URL = path.join(path.dirname(require.resolve("pdfjs-dist/package.json")), "standard_fonts") + "/";
 
 class NodeCanvasFactory {
   create(width, height) {
