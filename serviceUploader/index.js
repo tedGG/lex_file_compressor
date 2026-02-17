@@ -102,7 +102,7 @@ app.post("/compress", async (req, res) => {
     await warmUpServer();
   }
 
-  const { basicurl, contverid, parentid, quality = 50, scaleFactor = 100 } = req.body;
+  const { basicurl, contverid, parentid, ownerid, quality = 50, scaleFactor = 100 } = req.body;
 
   if (!basicurl || !contverid) {
     return res.status(400).json({
@@ -132,7 +132,7 @@ app.post("/compress", async (req, res) => {
         status: "queued",
         message: "Job created, waiting to start",
         createdAt: Date.now(),
-        params: { basicurl, contverid, parentid, quality, scaleFactor },
+        params: { basicurl, contverid, parentid, ownerid, quality, scaleFactor },
         fileInfo,
         pdfBuffer,
         originalSize
@@ -175,6 +175,7 @@ app.post("/compress", async (req, res) => {
       {
         contentDocumentId: parentid ? undefined : fileInfo.ContentDocumentId,
         parentId: parentid,
+        ownerId: ownerid,
         asyncCompression: false
       }
     );
@@ -225,7 +226,7 @@ async function processCompressionJob(jobId) {
   const job = jobs.get(jobId);
   if (!job) return;
 
-  const { basicurl, parentid, quality, scaleFactor } = job.params;
+  const { basicurl, parentid, ownerid, quality, scaleFactor } = job.params;
   const { fileInfo, pdfBuffer, originalSize } = job;
 
   try {
@@ -271,6 +272,7 @@ async function processCompressionJob(jobId) {
       {
         contentDocumentId: parentid ? undefined : fileInfo.ContentDocumentId,
         parentId: parentid,
+        ownerId: ownerid,
         asyncCompression: true
       }
     );

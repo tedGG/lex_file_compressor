@@ -52,7 +52,7 @@ class SalesforceConnection {
     return response.data;
   }
 
-  async saveFile(basicUrl, title, pdfBytes, { contentDocumentId, parentId, asyncCompression = false }) {
+  async saveFile(basicUrl, title, pdfBytes, { contentDocumentId, parentId, ownerId, asyncCompression = false }) {
     const accessToken = await this.getToken(basicUrl);
     const url = `${basicUrl}/services/data/v58.0/sobjects/ContentVersion`;
 
@@ -69,6 +69,10 @@ class SalesforceConnection {
       body.FirstPublishLocationId = parentId;
     } else if (contentDocumentId) {
       body.ContentDocumentId = contentDocumentId;
+    }
+
+    if (ownerId) {
+      body.OwnerId = ownerId;
     }
 
     const response = await axios.post(url, body, {
