@@ -312,7 +312,7 @@ async function processCompressionJob(jobId) {
 
 async function compressPdf(pdfBytes, quality, scale, onProgress) {
   const canvasFactory = new NodeCanvasFactory();
-  const loadingTask = pdfjsLib.getDocument({ data: pdfBytes, useSystemFonts: true, standardFontDataUrl: STANDARD_FONT_DATA_URL, canvasFactory });
+  const loadingTask = pdfjsLib.getDocument({ data: pdfBytes, useSystemFonts: false, standardFontDataUrl: STANDARD_FONT_DATA_URL, canvasFactory });
   const pdfDoc = await loadingTask.promise;
   const numPages = pdfDoc.numPages;
   console.log(`Processing ${numPages} page(s)`);
