@@ -174,7 +174,8 @@ app.post("/compress", async (req, res) => {
       compressedBytes,
       {
         contentDocumentId: parentid ? undefined : fileInfo.ContentDocumentId,
-        parentId: parentid
+        parentId: parentid,
+        asyncCompression: false
       }
     );
 
@@ -269,7 +270,8 @@ async function processCompressionJob(jobId) {
       compressedBytes,
       {
         contentDocumentId: parentid ? undefined : fileInfo.ContentDocumentId,
-        parentId: parentid
+        parentId: parentid,
+        asyncCompression: true
       }
     );
 
