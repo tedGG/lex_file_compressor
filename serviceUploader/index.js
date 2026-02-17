@@ -1,10 +1,13 @@
 const express = require("express");
 require("dotenv").config();
 
+const path = require("path");
 const { createCanvas } = require("canvas");
 const { PDFDocument } = require("pdf-lib");
 const pdfjsLib = require("pdfjs-dist/legacy/build/pdf.js");
 const crypto = require("crypto");
+
+const STANDARD_FONT_DATA_URL = `file://${path.join(path.dirname(require.resolve("pdfjs-dist/package.json")), "standard_fonts")}/`;
 
 class NodeCanvasFactory {
   create(width, height) {
@@ -309,7 +312,7 @@ async function processCompressionJob(jobId) {
 
 async function compressPdf(pdfBytes, quality, scale, onProgress) {
   const canvasFactory = new NodeCanvasFactory();
-  const loadingTask = pdfjsLib.getDocument({ data: pdfBytes, useSystemFonts: true, canvasFactory });
+  const loadingTask = pdfjsLib.getDocument({ data: pdfBytes, useSystemFonts: true, standardFontDataUrl: STANDARD_FONT_DATA_URL, canvasFactory });
   const pdfDoc = await loadingTask.promise;
   const numPages = pdfDoc.numPages;
   console.log(`Processing ${numPages} page(s)`);
