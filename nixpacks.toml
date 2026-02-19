@@ -1,12 +1,7 @@
 [phases.setup]
 nixPkgs = [
   "nodejs_18",
-  "cairo",
-  "pango",
-  "libjpeg",
-  "giflib",
-  "librsvg",
-  "pixman"
+  "ghostscript"
 ]
 
 [phases.install]
