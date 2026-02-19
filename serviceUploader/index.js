@@ -321,7 +321,6 @@ async function compressPdf(pdfBytes, quality, scale, onProgress) {
 
   for (let i = 1; i <= numPages; i++) {
     const page = await pdfDoc.getPage(i);
-    const originalViewport = page.getViewport({ scale: 1.0 });
     const viewport = page.getViewport({ scale });
 
     const { canvas, context } = canvasFactory.create(
@@ -337,12 +336,12 @@ async function compressPdf(pdfBytes, quality, scale, onProgress) {
     const jpegBuffer = canvas.toBuffer("image/jpeg", { quality });
 
     const img = await newPdf.embedJpg(jpegBuffer);
-    const newPage = newPdf.addPage([originalViewport.width, originalViewport.height]);
+    const newPage = newPdf.addPage([viewport.width, viewport.height]);
     newPage.drawImage(img, {
       x: 0,
       y: 0,
-      width: originalViewport.width,
-      height: originalViewport.height
+      width: viewport.width,
+      height: viewport.height
     });
 
     // Explicitly clean up canvas to free memory
