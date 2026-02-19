@@ -2,27 +2,7 @@ const express = require("express");
 require("dotenv").config();
 
 const path = require("path");
-const { createCanvas } = require("canvas");
-const { PDFDocument } = require("pdf-lib");
-const pdfjsLib = require("pdfjs-dist/legacy/build/pdf.js");
 const crypto = require("crypto");
-
-const STANDARD_FONT_DATA_URL = path.join(path.dirname(require.resolve("pdfjs-dist/package.json")), "standard_fonts") + "/";
-
-class NodeCanvasFactory {
-  create(width, height) {
-    const canvas = createCanvas(width, height);
-    return { canvas, context: canvas.getContext("2d") };
-  }
-  reset(canvasAndContext, width, height) {
-    canvasAndContext.canvas.width = width;
-    canvasAndContext.canvas.height = height;
-  }
-  destroy(canvasAndContext) {
-    canvasAndContext.canvas.width = 0;
-    canvasAndContext.canvas.height = 0;
-  }
-}
 
 const app = express();
 app.use(express.json({ limit: "100mb" }));
@@ -49,22 +29,22 @@ function updateJobStatus(jobId, updates) {
 
 async function warmUpServer() {
   if (isServerReady) return true;
-  
+
   console.log("Warming up server...");
-  
+
   try {
-    const testCanvas = createCanvas(100, 100);
-    console.log("✓ Canvas initialized");
-    
-    const testPdf = await PDFDocument.create();
-    console.log("✓ PDF-lib ready");
-    
-    if (pdfjsLib) {
-      console.log("✓ pdfjs-dist ready");
-    }
-    
-    await new Promise(resolve => setTimeout(resolve, 2000)); // 2 second buffer
-    
+    const { execFile } = require("child_process");
+    await new Promise((resolve, reject) => {
+      execFile("gs", ["--version"], (error, stdout) => {
+        if (error) {
+          reject(new Error("Ghostscript (gs) not found. Install it to enable PDF compression."));
+          return;
+        }
+        console.log(`✓ Ghostscript ${stdout.trim()} available`);
+        resolve();
+      });
+    });
+
     isServerReady = true;
     console.log("✓ Server is fully ready!");
     return true;
@@ -311,52 +291,71 @@ async function processCompressionJob(jobId) {
 }
 
 async function compressPdf(pdfBytes, quality, scale, onProgress) {
-  const canvasFactory = new NodeCanvasFactory();
-  const loadingTask = pdfjsLib.getDocument({ data: pdfBytes, useSystemFonts: false, standardFontDataUrl: STANDARD_FONT_DATA_URL, canvasFactory });
-  const pdfDoc = await loadingTask.promise;
-  const numPages = pdfDoc.numPages;
-  console.log(`Processing ${numPages} page(s)`);
+  const fs = require("fs");
+  const os = require("os");
+  const { execFile } = require("child_process");
 
-  const newPdf = await PDFDocument.create();
+  const tmpDir = os.tmpdir();
+  const timestamp = Date.now();
+  const inputPath = path.join(tmpDir, `pdf_input_${timestamp}.pdf`);
+  const outputPath = path.join(tmpDir, `pdf_output_${timestamp}.pdf`);
 
-  for (let i = 1; i <= numPages; i++) {
-    const page = await pdfDoc.getPage(i);
-    const viewport = page.getViewport({ scale });
+  fs.writeFileSync(inputPath, Buffer.from(pdfBytes));
 
-    const { canvas, context } = canvasFactory.create(
-      Math.floor(viewport.width),
-      Math.floor(viewport.height)
-    );
+  // Map quality (0-1) to Ghostscript PDFSETTINGS preset
+  let pdfSettings;
+  if (quality <= 0.4) pdfSettings = "/screen";       // 72 DPI — smallest
+  else if (quality <= 0.7) pdfSettings = "/ebook";    // 150 DPI — balanced
+  else if (quality <= 0.85) pdfSettings = "/printer";  // 300 DPI — high quality
+  else pdfSettings = "/prepress";                      // 300 DPI — max quality
 
-    await page.render({
-      canvasContext: context,
-      viewport
-    }).promise;
+  // Map scale (0-1) to target image DPI (base 150 DPI)
+  const targetDpi = Math.max(36, Math.round(150 * scale));
+  const jpegQuality = Math.round(quality * 100);
 
-    const jpegBuffer = canvas.toBuffer("image/jpeg", { quality });
+  console.log(`Ghostscript: preset=${pdfSettings}, imageDPI=${targetDpi}, jpegQuality=${jpegQuality}`);
 
-    const img = await newPdf.embedJpg(jpegBuffer);
-    const newPage = newPdf.addPage([viewport.width, viewport.height]);
-    newPage.drawImage(img, {
-      x: 0,
-      y: 0,
-      width: viewport.width,
-      height: viewport.height
+  if (onProgress) onProgress(0, 1);
+
+  return new Promise((resolve, reject) => {
+    execFile("gs", [
+      "-sDEVICE=pdfwrite",
+      "-dCompatibilityLevel=1.4",
+      `-dPDFSETTINGS=${pdfSettings}`,
+      "-dNOPAUSE",
+      "-dBATCH",
+      "-dQUIET",
+      "-dDownsampleColorImages=true",
+      `-dColorImageResolution=${targetDpi}`,
+      "-dColorImageDownsampleType=/Bicubic",
+      "-dDownsampleGrayImages=true",
+      `-dGrayImageResolution=${targetDpi}`,
+      "-dGrayImageDownsampleType=/Bicubic",
+      "-dDownsampleMonoImages=true",
+      `-dMonoImageResolution=${targetDpi}`,
+      `-dJPEGQ=${jpegQuality}`,
+      `-sOutputFile=${outputPath}`,
+      inputPath
+    ], { timeout: 300000 }, (error) => {
+      // Clean up input
+      try { fs.unlinkSync(inputPath); } catch (_) {}
+
+      if (error) {
+        try { fs.unlinkSync(outputPath); } catch (_) {}
+        reject(new Error(`Ghostscript failed: ${error.message}`));
+        return;
+      }
+
+      try {
+        const result = fs.readFileSync(outputPath);
+        fs.unlinkSync(outputPath);
+        if (onProgress) onProgress(1, 1);
+        resolve(new Uint8Array(result));
+      } catch (readErr) {
+        reject(new Error(`Failed to read compressed PDF: ${readErr.message}`));
+      }
     });
-
-    // Explicitly clean up canvas to free memory
-    canvasFactory.destroy({ canvas, context });
-
-    console.log(`  Page ${i}/${numPages} done`);
-
-    // Report progress
-    if (onProgress) {
-      onProgress(i, numPages);
-    }
-  }
-
-  pdfDoc.destroy();
-  return await newPdf.save({ useObjectStreams: true });
+  });
 }
 
 app.listen(port, '0.0.0.0', () => {
