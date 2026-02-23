@@ -3,6 +3,7 @@ require("dotenv").config();
 
 const path = require("path");
 const crypto = require("crypto");
+const { PDFDocument } = require("pdf-lib");
 
 const app = express();
 app.use(express.json({ limit: "100mb" }));
@@ -14,6 +15,11 @@ let isServerReady = false;
 
 // Job queue for async processing
 const jobs = new Map();
+
+async function getPdfPageCount(pdfBuffer) {
+  const doc = await PDFDocument.load(pdfBuffer, { ignoreEncryption: true });
+  return doc.getPageCount();
+}
 
 function createJobId() {
   return crypto.randomBytes(8).toString("hex");
@@ -105,10 +111,11 @@ app.post("/compress", async (req, res) => {
 
     const originalSize = pdfBuffer.byteLength;
     const sizeMB = originalSize / (1024 * 1024);
-    console.log(`Original size: ${(originalSize / 1024).toFixed(1)} KB (${sizeMB.toFixed(1)} MB)`);
+    const pageCount = await getPdfPageCount(pdfBuffer);
+    console.log(`Original size: ${(originalSize / 1024).toFixed(1)} KB (${sizeMB.toFixed(1)} MB), ${pageCount} page(s)`);
 
-    // For files >= 20MB, use async processing
-    if (sizeMB >= 20) {
+    // For files >= 20MB or > 30 pages, use async processing
+    if (sizeMB >= 20 || pageCount > 30) {
       const jobId = createJobId();
       const job = {
         id: jobId,
@@ -118,7 +125,8 @@ app.post("/compress", async (req, res) => {
         params: { basicurl, contverid, parentid, ownerid, quality, scaleFactor },
         fileInfo,
         pdfBuffer,
-        originalSize
+        originalSize,
+        pageCount
       };
 
       jobs.set(jobId, job);
@@ -131,13 +139,14 @@ app.post("/compress", async (req, res) => {
       return res.json({
         success: true,
         jobId,
+        pageCount,
         message: "Large file - compression job started",
         statusUrl: `/compress/status/${jobId}`,
         async: true
       });
     }
 
-    // For files < 20MB, process synchronously
+    // For files < 20MB and <= 30 pages, process synchronously
     console.log(`Small file - processing synchronously`);
 
     const compressedBytes = await compressPdf(
@@ -167,6 +176,7 @@ app.post("/compress", async (req, res) => {
       success: true,
       originalSize,
       compressedSize,
+      pageCount,
       reductionPercent: parseFloat(reductionPercent),
       contentVersionId: saved.id,
       async: false
@@ -210,7 +220,7 @@ async function processCompressionJob(jobId) {
   if (!job) return;
 
   const { basicurl, parentid, ownerid, quality, scaleFactor } = job.params;
-  const { fileInfo, pdfBuffer, originalSize } = job;
+  const { fileInfo, pdfBuffer, originalSize, pageCount } = job;
 
   try {
 
@@ -268,6 +278,7 @@ async function processCompressionJob(jobId) {
       result: {
         originalSize,
         compressedSize,
+        pageCount,
         reductionPercent: parseFloat(reductionPercent),
         contentVersionId: saved.id
       }
