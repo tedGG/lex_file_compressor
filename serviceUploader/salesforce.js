@@ -1,5 +1,6 @@
 require('dotenv').config();
 const axios = require('axios');
+const FormData = require('form-data');
 
 class SalesforceConnection {
 
@@ -93,22 +94,24 @@ class SalesforceConnection {
     const accessToken = await this.getToken(basicUrl);
     const url = `${basicUrl}/services/data/v58.0/sobjects/ContentVersion`;
 
-    const base64Data = Buffer.from(fileBytes).toString('base64');
-
-    const body = {
-      Title: title,
-      PathOnClient: pathOnClient || title,
-      VersionData: base64Data
-    };
-
+    const metadata = { Title: title, PathOnClient: pathOnClient || title };
     if (parentId) {
-      body.FirstPublishLocationId = parentId;
+      metadata.FirstPublishLocationId = parentId;
     }
 
-    const response = await axios.post(url, body, {
+    const form = new FormData();
+    form.append('entity_content', JSON.stringify(metadata), {
+      contentType: 'application/json'
+    });
+    form.append('VersionData', Buffer.from(fileBytes), {
+      filename: pathOnClient || title,
+      contentType: 'application/octet-stream'
+    });
+
+    const response = await axios.post(url, form, {
       headers: {
-        Authorization: `Bearer ${accessToken}`,
-        'Content-Type': 'application/json'
+        ...form.getHeaders(),
+        Authorization: `Bearer ${accessToken}`
       },
       maxContentLength: 300 * 1024 * 1024,
       maxBodyLength: 300 * 1024 * 1024,
