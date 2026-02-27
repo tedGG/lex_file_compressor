@@ -52,7 +52,7 @@ class SalesforceConnection {
     return response.data;
   }
 
-  async saveFile(basicUrl, title, pdfBytes, { contentDocumentId, parentId, ownerId, asyncCompression = false }) {
+  async saveFile(basicUrl, title, pdfBytes, { contentDocumentId, parentId, ownerId, asyncCompression = false, pathOnClient }) {
     const accessToken = await this.getToken(basicUrl);
     const url = `${basicUrl}/services/data/v58.0/sobjects/ContentVersion`;
 
@@ -60,7 +60,7 @@ class SalesforceConnection {
 
     const body = {
       Title: title,
-      PathOnClient: title + '.pdf',
+      PathOnClient: pathOnClient || title + '.pdf',
       VersionData: base64Data,
       Async_Comression__c: asyncCompression
     };
