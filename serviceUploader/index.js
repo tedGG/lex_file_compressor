@@ -405,7 +405,7 @@ app.post("/documents-upload/:recordid", upload.array("files", 10), async (req, r
       const originalName = file.originalname.replace(/\.[^.]+$/, '');
       const extension = path.extname(file.originalname);
 
-      const saved = await salesforce.saveFile(
+      const saved = await salesforce.uploadFile(
         basicurl,
         originalName,
         new Uint8Array(file.buffer),

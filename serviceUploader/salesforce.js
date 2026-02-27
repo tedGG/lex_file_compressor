@@ -88,6 +88,36 @@ class SalesforceConnection {
     console.log('File saved to Salesforce:', response.data.id);
     return response.data;
   }
+
+  async uploadFile(basicUrl, title, fileBytes, { parentId, pathOnClient }) {
+    const accessToken = await this.getToken(basicUrl);
+    const url = `${basicUrl}/services/data/v58.0/sobjects/ContentVersion`;
+
+    const base64Data = Buffer.from(fileBytes).toString('base64');
+
+    const body = {
+      Title: title,
+      PathOnClient: pathOnClient || title,
+      VersionData: base64Data
+    };
+
+    if (parentId) {
+      body.FirstPublishLocationId = parentId;
+    }
+
+    const response = await axios.post(url, body, {
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        'Content-Type': 'application/json'
+      },
+      maxContentLength: 300 * 1024 * 1024,
+      maxBodyLength: 300 * 1024 * 1024,
+      timeout: 120000
+    });
+
+    console.log('File uploaded to Salesforce:', response.data.id);
+    return response.data;
+  }
 }
 
 module.exports = new SalesforceConnection();
