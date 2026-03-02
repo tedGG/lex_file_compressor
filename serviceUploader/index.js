@@ -400,13 +400,27 @@ app.get("/documents-upload/status/:jobId", (req, res) => {
 });
 
 app.get("/documents-upload/:recordid", (req, res) => {
-  const html = uploadHtmlTemplate.replace('{{RECORD_ID}}', req.params.recordid);
+  const apiKey = req.query.apiKey;
+  const expectedKey = process.env.UPLOAD_API_KEY;
+
+  if (expectedKey && apiKey !== expectedKey) {
+    return res.status(401).json({ success: false, error: "Invalid or missing API key" });
+  }
+
+  const html = uploadHtmlTemplate
+    .replace('{{RECORD_ID}}', req.params.recordid)
+    .replace('{{API_KEY}}', apiKey || '');
   res.send(html);
 });
 
 app.post("/documents-upload/:recordid", upload.array("files", 10), async (req, res) => {
   const recordid = req.params.recordid;
   const basicurl = process.env.SF_BASE_URL;
+
+  const expectedKey = process.env.UPLOAD_API_KEY;
+  if (expectedKey && req.headers['x-api-key'] !== expectedKey) {
+    return res.status(401).json({ success: false, error: "Invalid or missing API key" });
+  }
 
   if (!req.files || req.files.length === 0) {
     return res.status(400).json({ success: false, error: "No files provided" });

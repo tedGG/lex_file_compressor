@@ -79,6 +79,7 @@
     const MAX_FILES = 10;
     const MAX_TOTAL = 200 * 1024 * 1024;
     const recordid = '{{RECORD_ID}}';
+    const apiKey = '{{API_KEY}}';
     const dropZone = document.getElementById('dropZone');
     const fileInput = document.getElementById('fileInput');
     const fileList = document.getElementById('fileList');
@@ -198,7 +199,9 @@
       selectedFiles.forEach(f => fd.append('files', f));
 
       try {
-        const res = await fetch('/documents-upload/' + recordid, { method: 'POST', body: fd });
+        const headers = {};
+        if (apiKey) headers['X-API-Key'] = apiKey;
+        const res = await fetch('/documents-upload/' + recordid, { method: 'POST', body: fd, headers });
         const data = await res.json();
 
         // Re-enable form immediately
