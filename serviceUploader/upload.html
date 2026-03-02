@@ -159,12 +159,40 @@
     });
     fileInput.addEventListener('change', () => { addFiles(fileInput.files); fileInput.value = ''; });
 
+    function pollJobStatus(jobId, fileName) {
+      const poll = setInterval(async () => {
+        try {
+          const res = await fetch('/documents-upload/status/' + jobId);
+          const data = await res.json();
+          if (!data.success || !data.job) {
+            clearInterval(poll);
+            showToast('error', 'Upload Failed', '"' + fileName + '" — job not found.');
+            return;
+          }
+          const job = data.job;
+          if (job.status === 'completed') {
+            clearInterval(poll);
+            const msg = job.result && job.result.wasCompressed
+              ? '"' + fileName + '" compressed & uploaded.'
+              : '"' + fileName + '" uploaded successfully.';
+            showToast('success', 'Upload Successful', msg);
+          } else if (job.status === 'failed') {
+            clearInterval(poll);
+            showToast('error', 'Upload Failed', '"' + fileName + '" — ' + (job.error || 'unknown error'));
+          }
+        } catch (err) {
+          clearInterval(poll);
+          showToast('error', 'Connection Failed', 'Lost connection while tracking "' + fileName + '".');
+        }
+      }, 3000);
+    }
+
     form.addEventListener('submit', async e => {
       e.preventDefault();
       if (!selectedFiles.length) return;
 
       submitBtn.disabled = true;
-      submitBtn.innerHTML = '<span class="btn-spinner"></span> Uploading...';
+      submitBtn.innerHTML = '<span class="btn-spinner"></span> Submitting...';
 
       const fd = new FormData();
       selectedFiles.forEach(f => fd.append('files', f));
@@ -172,22 +200,29 @@
       try {
         const res = await fetch('/documents-upload/' + recordid, { method: 'POST', body: fd });
         const data = await res.json();
+
+        // Re-enable form immediately
         submitBtn.textContent = 'Upload';
+        submitBtn.disabled = false;
+        selectedFiles = [];
+        renderFiles();
+
         if (data.success) {
-          const count = data.results.filter(r => r.success).length;
-          const failed = data.results.filter(r => !r.success).length;
-          if (count > 0) showToast('success', 'Upload Successful', count + ' file(s) uploaded successfully.');
-          if (failed > 0) showToast('error', 'Upload Failed', failed + ' file(s) failed to upload.');
-          selectedFiles = [];
-          renderFiles();
+          const count = data.results.length;
+          const compressing = data.results.filter(r => r.needsCompression).length;
+          let msg = count + ' file(s) submitted for upload.';
+          if (compressing > 0) msg += ' ' + compressing + ' will be compressed.';
+          showToast('success', 'Files Submitted', msg);
+
+          // Poll each job in the background
+          data.results.forEach(r => pollJobStatus(r.jobId, r.fileName));
         } else {
           showToast('error', 'Upload Failed', data.error || 'Upload failed.');
-          submitBtn.disabled = false;
         }
       } catch (err) {
         submitBtn.textContent = 'Upload';
-        showToast('error', 'Connection Failed', 'Please check your internet & try again.');
         submitBtn.disabled = false;
+        showToast('error', 'Connection Failed', 'Please check your internet & try again.');
       }
     });
   </script>

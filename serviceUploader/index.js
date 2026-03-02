@@ -376,6 +376,29 @@ async function compressPdf(pdfBytes, quality, scale, onProgress) {
 
 const uploadHtmlTemplate = fs.readFileSync(path.join(__dirname, 'upload.html'), 'utf8');
 
+app.get("/documents-upload/status/:jobId", (req, res) => {
+  const job = jobs.get(req.params.jobId);
+
+  if (!job) {
+    return res.status(404).json({ success: false, error: "Job not found" });
+  }
+
+  res.json({
+    success: true,
+    job: {
+      id: job.id,
+      type: job.type,
+      status: job.status,
+      message: job.message,
+      progress: job.progress,
+      createdAt: job.createdAt,
+      completedAt: job.completedAt,
+      result: job.result,
+      error: job.error
+    }
+  });
+});
+
 app.get("/documents-upload/:recordid", (req, res) => {
   const html = uploadHtmlTemplate.replace('{{RECORD_ID}}', req.params.recordid);
   res.send(html);
@@ -399,32 +422,124 @@ app.post("/documents-upload/:recordid", upload.array("files", 10), async (req, r
 
   console.log(`Uploading ${req.files.length} file(s) (${(totalSize / 1024 / 1024).toFixed(1)} MB total) to record ${recordid}`);
 
+  // Queue all files as background jobs — respond immediately
   const results = [];
   for (const file of req.files) {
-    try {
-      const originalName = file.originalname.replace(/\.[^.]+$/, '');
-      const extension = path.extname(file.originalname);
+    const originalName = file.originalname.replace(/\.[^.]+$/, '');
+    const extension = path.extname(file.originalname).toLowerCase();
+    const isPdf = extension === '.pdf';
+    const sizeMB = file.size / (1024 * 1024);
+    const needsCompression = isPdf && sizeMB > 5;
 
-      const saved = await salesforce.uploadFile(
-        basicurl,
-        originalName,
-        new Uint8Array(file.buffer),
-        {
-          parentId: recordid,
-          pathOnClient: originalName + extension
-        }
-      );
+    const jobId = createJobId();
+    const job = {
+      id: jobId,
+      type: 'upload',
+      status: 'queued',
+      message: needsCompression ? 'Queued for compression & upload' : 'Queued for upload',
+      progress: 0,
+      createdAt: Date.now(),
+      params: { basicurl, recordid, originalName, extension, needsCompression },
+      fileBytes: new Uint8Array(file.buffer),
+      originalSize: file.size
+    };
+    jobs.set(jobId, job);
 
-      console.log(`Uploaded "${file.originalname}": ${saved.id}`);
-      results.push({ success: true, fileName: file.originalname, contentVersionId: saved.id });
-    } catch (err) {
-      console.error(`Failed "${file.originalname}": ${err.message}`);
-      results.push({ success: false, fileName: file.originalname, error: err.message });
-    }
+    console.log(`[Job ${jobId}] "${file.originalname}" (${sizeMB.toFixed(1)} MB)${needsCompression ? ' — will compress' : ''}`);
+    setImmediate(() => processUploadJob(jobId));
+
+    results.push({
+      success: true,
+      fileName: file.originalname,
+      jobId,
+      statusUrl: `/documents-upload/status/${jobId}`,
+      needsCompression,
+      originalSize: file.size
+    });
   }
 
   res.json({ success: true, results });
 });
+
+async function processUploadJob(jobId) {
+  const job = jobs.get(jobId);
+  if (!job) return;
+
+  const { basicurl, recordid, originalName, extension, needsCompression } = job.params;
+
+  try {
+    let fileBytes = job.fileBytes;
+    let wasCompressed = false;
+
+    // Compress PDF if needed (>5MB)
+    if (needsCompression) {
+      if (!isServerReady) await warmUpServer();
+
+      if (isServerReady) {
+        updateJobStatus(jobId, {
+          status: 'compressing',
+          message: 'Compressing PDF...',
+          progress: 10
+        });
+
+        try {
+          const compressed = await compressPdf(fileBytes, 0.7, 1.0);
+          const reduction = ((1 - compressed.length / fileBytes.length) * 100).toFixed(1);
+          console.log(`[Job ${jobId}] Compressed: ${(fileBytes.length / 1024 / 1024).toFixed(1)} MB → ${(compressed.length / 1024 / 1024).toFixed(1)} MB (${reduction}% reduction)`);
+          fileBytes = compressed;
+          wasCompressed = true;
+        } catch (compressErr) {
+          console.error(`[Job ${jobId}] Compression failed, uploading original: ${compressErr.message}`);
+        }
+      }
+    }
+
+    updateJobStatus(jobId, {
+      status: 'uploading',
+      message: `Uploading to Salesforce (${(fileBytes.length / 1024 / 1024).toFixed(1)} MB)`,
+      progress: 50
+    });
+
+    const saved = await salesforce.uploadFile(
+      basicurl,
+      originalName,
+      fileBytes,
+      {
+        parentId: recordid,
+        pathOnClient: originalName + extension
+      }
+    );
+
+    // Free memory
+    job.fileBytes = null;
+
+    updateJobStatus(jobId, {
+      status: 'completed',
+      message: 'Upload completed successfully',
+      progress: 100,
+      completedAt: Date.now(),
+      result: {
+        contentVersionId: saved.id,
+        originalSize: job.originalSize,
+        uploadSize: fileBytes.length,
+        wasCompressed
+      }
+    });
+
+    console.log(`[Job ${jobId}] Upload completed: ${saved.id}`);
+    setTimeout(() => jobs.delete(jobId), 60 * 60 * 1000);
+  } catch (err) {
+    job.fileBytes = null;
+    console.error(`[Job ${jobId}] Upload failed: ${err.message}`);
+    updateJobStatus(jobId, {
+      status: 'failed',
+      message: 'Upload failed',
+      error: err.message,
+      completedAt: Date.now()
+    });
+    setTimeout(() => jobs.delete(jobId), 10 * 60 * 1000);
+  }
+}
 
 app.listen(port, '0.0.0.0', () => {
   console.log(`PDF Compression API running on port: ${port}`);
