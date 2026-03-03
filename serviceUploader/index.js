@@ -526,7 +526,8 @@ async function processUploadJob(jobId) {
       {
         parentId: recordid,
         pathOnClient: originalName + extension,
-        ownerId
+        ownerId,
+        sendEmailNotification: true
       }
     );
 

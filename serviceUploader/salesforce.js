@@ -90,7 +90,7 @@ class SalesforceConnection {
     return response.data;
   }
 
-  async uploadFile(basicUrl, title, fileBytes, { parentId, pathOnClient, ownerId }) {
+  async uploadFile(basicUrl, title, fileBytes, { parentId, pathOnClient, ownerId, sendEmailNotification }) {
     const accessToken = await this.getToken(basicUrl);
     const url = `${basicUrl}/services/data/v58.0/sobjects/ContentVersion`;
 
@@ -100,6 +100,9 @@ class SalesforceConnection {
     }
     if (ownerId) {
       metadata.OwnerId = ownerId;
+    }
+    if (sendEmailNotification) {
+      metadata.Send_Email_Notification__c = true;
     }
 
     const form = new FormData();
