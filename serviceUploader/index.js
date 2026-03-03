@@ -19,6 +19,8 @@ let isServerReady = false;
 
 // Job queue for async processing
 const jobs = new Map();
+// Batch tracking for grouped upload jobs
+const batches = new Map();
 
 async function getPdfPageCount(pdfBuffer) {
   const doc = await PDFDocument.load(pdfBuffer, { ignoreEncryption: true });
@@ -441,6 +443,11 @@ app.post("/documents-upload/:recordid", upload.array("files", 10), async (req, r
 
   console.log(`Uploading ${req.files.length} file(s) (${(totalSize / 1024 / 1024).toFixed(1)} MB total) to record ${recordid}`);
 
+  // Create a batch to track all jobs from this upload request
+  const batchId = createJobId();
+  const batch = { total: req.files.length, completed: 0, basicurl, recordid };
+  batches.set(batchId, batch);
+
   // Queue all files as background jobs — respond immediately
   const results = [];
   for (const file of req.files) {
@@ -458,6 +465,7 @@ app.post("/documents-upload/:recordid", upload.array("files", 10), async (req, r
       message: needsCompression ? 'Queued for compression & upload' : 'Queued for upload',
       progress: 0,
       createdAt: Date.now(),
+      batchId,
       params: { basicurl, recordid, originalName, extension, needsCompression, ownerId },
       fileBytes: new Uint8Array(file.buffer),
       originalSize: file.size
@@ -526,8 +534,7 @@ async function processUploadJob(jobId) {
       {
         parentId: recordid,
         pathOnClient: originalName + extension,
-        ownerId,
-        sendEmailNotification: true
+        ownerId
       }
     );
 
@@ -549,6 +556,7 @@ async function processUploadJob(jobId) {
 
     console.log(`[Job ${jobId}] Upload completed: ${saved.id}`);
     setTimeout(() => jobs.delete(jobId), 60 * 60 * 1000);
+    await onUploadJobDone(job.batchId);
   } catch (err) {
     job.fileBytes = null;
     console.error(`[Job ${jobId}] Upload failed: ${err.message}`);
@@ -559,6 +567,26 @@ async function processUploadJob(jobId) {
       completedAt: Date.now()
     });
     setTimeout(() => jobs.delete(jobId), 10 * 60 * 1000);
+    await onUploadJobDone(job.batchId);
+  }
+}
+
+async function onUploadJobDone(batchId) {
+  const batch = batches.get(batchId);
+  if (!batch) return;
+
+  batch.completed++;
+  if (batch.completed < batch.total) return;
+
+  // All jobs in this batch are done — update the record
+  batches.delete(batchId);
+  try {
+    await salesforce.updateRecord(batch.basicurl, batch.recordid, {
+      Send_Email_Notification__c: true
+    });
+    console.log(`[Batch ${batchId}] Set Send_Email_Notification__c on ${batch.recordid}`);
+  } catch (err) {
+    console.error(`[Batch ${batchId}] Failed to update record ${batch.recordid}: ${err.message}`);
   }
 }
 

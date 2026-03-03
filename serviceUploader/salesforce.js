@@ -90,7 +90,29 @@ class SalesforceConnection {
     return response.data;
   }
 
-  async uploadFile(basicUrl, title, fileBytes, { parentId, pathOnClient, ownerId, sendEmailNotification }) {
+  async updateRecord(basicUrl, recordId, fields) {
+    const accessToken = await this.getToken(basicUrl);
+
+    // Detect sObject type from Salesforce ID prefix
+    const prefixMap = { '00Q': 'Lead', '003': 'Contact' };
+    const prefix = recordId.substring(0, 3);
+    const sObjectType = prefixMap[prefix];
+    if (!sObjectType) {
+      throw new Error(`Unknown sObject type for ID prefix: ${prefix}`);
+    }
+
+    const url = `${basicUrl}/services/data/v58.0/sobjects/${sObjectType}/${recordId}`;
+    await axios.patch(url, fields, {
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        'Content-Type': 'application/json'
+      }
+    });
+
+    console.log(`Updated ${sObjectType} ${recordId}:`, fields);
+  }
+
+  async uploadFile(basicUrl, title, fileBytes, { parentId, pathOnClient, ownerId }) {
     const accessToken = await this.getToken(basicUrl);
     const url = `${basicUrl}/services/data/v58.0/sobjects/ContentVersion`;
 
@@ -100,9 +122,6 @@ class SalesforceConnection {
     }
     if (ownerId) {
       metadata.OwnerId = ownerId;
-    }
-    if (sendEmailNotification) {
-      metadata.Send_Email_Notification__c = true;
     }
 
     const form = new FormData();
