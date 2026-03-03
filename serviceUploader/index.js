@@ -407,9 +407,12 @@ app.get("/documents-upload/:recordid", (req, res) => {
     return res.status(401).json({ success: false, error: "Invalid or missing API key" });
   }
 
+  const ownerId = req.query.ownerId || '';
+
   const html = uploadHtmlTemplate
     .replace('{{RECORD_ID}}', req.params.recordid)
-    .replace('{{API_KEY}}', apiKey || '');
+    .replace('{{API_KEY}}', apiKey || '')
+    .replace('{{OWNER_ID}}', ownerId);
   res.send(html);
 });
 
@@ -434,6 +437,8 @@ app.post("/documents-upload/:recordid", upload.array("files", 10), async (req, r
     return res.status(400).json({ success: false, error: "Total file size exceeds 200 MB" });
   }
 
+  const ownerId = req.headers['x-owner-id'] || '';
+
   console.log(`Uploading ${req.files.length} file(s) (${(totalSize / 1024 / 1024).toFixed(1)} MB total) to record ${recordid}`);
 
   // Queue all files as background jobs — respond immediately
@@ -453,7 +458,7 @@ app.post("/documents-upload/:recordid", upload.array("files", 10), async (req, r
       message: needsCompression ? 'Queued for compression & upload' : 'Queued for upload',
       progress: 0,
       createdAt: Date.now(),
-      params: { basicurl, recordid, originalName, extension, needsCompression },
+      params: { basicurl, recordid, originalName, extension, needsCompression, ownerId },
       fileBytes: new Uint8Array(file.buffer),
       originalSize: file.size
     };
@@ -479,7 +484,7 @@ async function processUploadJob(jobId) {
   const job = jobs.get(jobId);
   if (!job) return;
 
-  const { basicurl, recordid, originalName, extension, needsCompression } = job.params;
+  const { basicurl, recordid, originalName, extension, needsCompression, ownerId } = job.params;
 
   try {
     let fileBytes = job.fileBytes;
@@ -520,7 +525,8 @@ async function processUploadJob(jobId) {
       fileBytes,
       {
         parentId: recordid,
-        pathOnClient: originalName + extension
+        pathOnClient: originalName + extension,
+        ownerId
       }
     );
 

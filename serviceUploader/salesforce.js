@@ -90,13 +90,16 @@ class SalesforceConnection {
     return response.data;
   }
 
-  async uploadFile(basicUrl, title, fileBytes, { parentId, pathOnClient }) {
+  async uploadFile(basicUrl, title, fileBytes, { parentId, pathOnClient, ownerId }) {
     const accessToken = await this.getToken(basicUrl);
     const url = `${basicUrl}/services/data/v58.0/sobjects/ContentVersion`;
 
     const metadata = { Title: title, PathOnClient: pathOnClient || title };
     if (parentId) {
       metadata.FirstPublishLocationId = parentId;
+    }
+    if (ownerId) {
+      metadata.OwnerId = ownerId;
     }
 
     const form = new FormData();

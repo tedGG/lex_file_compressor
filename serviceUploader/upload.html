@@ -80,6 +80,7 @@
     const MAX_TOTAL = 200 * 1024 * 1024;
     const recordid = '{{RECORD_ID}}';
     const apiKey = '{{API_KEY}}';
+    const ownerId = '{{OWNER_ID}}';
     const dropZone = document.getElementById('dropZone');
     const fileInput = document.getElementById('fileInput');
     const fileList = document.getElementById('fileList');
@@ -201,6 +202,7 @@
       try {
         const headers = {};
         if (apiKey) headers['X-API-Key'] = apiKey;
+        if (ownerId) headers['X-Owner-Id'] = ownerId;
         const res = await fetch('/documents-upload/' + recordid, { method: 'POST', body: fd, headers });
         const data = await res.json();
 
