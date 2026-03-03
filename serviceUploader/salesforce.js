@@ -94,7 +94,7 @@ class SalesforceConnection {
     const accessToken = await this.getToken(basicUrl);
 
     // Detect sObject type from Salesforce ID prefix
-    const prefixMap = { '00Q': 'Lead', '003': 'Contact' };
+    const prefixMap = { '00Q': 'Lead', '006': 'Opportunity' };
     const prefix = recordId.substring(0, 3);
     const sObjectType = prefixMap[prefix];
     if (!sObjectType) {
