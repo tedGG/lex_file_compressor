@@ -16,6 +16,7 @@ const fs = require("fs");
 const salesforce = require("./salesforce");
 
 let isServerReady = false;
+let mupdfModule = null;
 
 // Job queue for async processing
 const jobs = new Map();
@@ -57,18 +58,19 @@ async function warmUpServer() {
       });
     });
 
-    // mutool is optional — used only as a fallback when Ghostscript can't reduce
-    await new Promise((resolve) => {
-      execFile("mutool", ["-v"], (error, stdout, stderr) => {
-        if (error) {
-          console.warn(`⚠ mutool (MuPDF) not found — fallback compression disabled`);
-        } else {
-          const version = (stdout || stderr || "").trim().split("\n")[0];
-          console.log(`✓ mutool ${version} available`);
-        }
-        resolve();
-      });
-    });
+    // MuPDF (WASM) is optional — used only as a fallback when Ghostscript can't reduce
+    try {
+      mupdfModule = await import("mupdf");
+      if (mupdfModule && mupdfModule.Document && mupdfModule.PDFDocument) {
+        console.log(`✓ MuPDF (WASM) available`);
+      } else {
+        console.warn(`⚠ mupdf module loaded but API unexpected — fallback compression disabled`);
+        mupdfModule = null;
+      }
+    } catch (mupdfErr) {
+      console.warn(`⚠ MuPDF (WASM) not available: ${mupdfErr.message} — fallback compression disabled`);
+      mupdfModule = null;
+    }
 
     isServerReady = true;
     console.log("✓ Server is fully ready!");
@@ -360,7 +362,7 @@ async function compressPdf(pdfBytes, quality, scale, onProgress) {
     if (compressed.length >= originalSize) {
       console.log(`Ghostscript output (${(compressed.length / 1024).toFixed(1)} KB) ≥ original — trying MuPDF fallback`);
       try {
-        const mupdfOut = await runMutool(inputPath);
+        const mupdfOut = await runMupdf(pdfBytes);
         if (mupdfOut.length < compressed.length) {
           console.log(`MuPDF result: ${(mupdfOut.length / 1024).toFixed(1)} KB`);
           compressed = mupdfOut;
@@ -386,36 +388,28 @@ async function compressPdf(pdfBytes, quality, scale, onProgress) {
   }
 }
 
-function runMutool(inputPath) {
-  const os = require("os");
-  const { execFile } = require("child_process");
+async function runMupdf(pdfBytes) {
+  if (!mupdfModule) {
+    try {
+      mupdfModule = await import("mupdf");
+    } catch (err) {
+      throw new Error(`mupdf module not available: ${err.message}`);
+    }
+  }
 
-  const outputPath = path.join(os.tmpdir(), `pdf_mupdf_${Date.now()}_${Math.random().toString(36).slice(2, 8)}.pdf`);
+  const options = "compress,compress-images,compress-fonts,sanitize,garbage=deduplicate";
+  console.log(`MuPDF (WASM): saveToBuffer with ${options}`);
 
-  console.log(`MuPDF: mutool convert with compress,compress-images,compress-fonts,sanitize,garbage=deduplicate`);
-
-  return new Promise((resolve, reject) => {
-    execFile("mutool", [
-      "convert",
-      "-o", outputPath,
-      "-O", "compress,compress-images,compress-fonts,sanitize,garbage=deduplicate",
-      inputPath
-    ], { timeout: 300000 }, (error) => {
-      if (error) {
-        try { fs.unlinkSync(outputPath); } catch (_) {}
-        reject(new Error(`mutool failed: ${error.message}`));
-        return;
-      }
-
-      try {
-        const result = fs.readFileSync(outputPath);
-        fs.unlinkSync(outputPath);
-        resolve(new Uint8Array(result));
-      } catch (readErr) {
-        reject(new Error(`Failed to read mutool output: ${readErr.message}`));
-      }
-    });
-  });
+  const doc = mupdfModule.Document.openDocument(Buffer.from(pdfBytes), "application/pdf");
+  try {
+    if (typeof doc.saveToBuffer !== "function") {
+      throw new Error("opened document is not a PDFDocument");
+    }
+    const buf = doc.saveToBuffer(options);
+    return new Uint8Array(buf.asUint8Array());
+  } finally {
+    if (typeof doc.destroy === "function") doc.destroy();
+  }
 }
 
 function runGhostscript(inputPath, pdfSettings, targetDpi, jpegQuality) {

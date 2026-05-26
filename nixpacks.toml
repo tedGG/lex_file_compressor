@@ -3,9 +3,6 @@ nixPkgs = [
   "nodejs_18",
   "ghostscript"
 ]
-aptPkgs = [
-  "mupdf-tools"
-]
 
 [phases.install]
 cmds = ["cd serviceUploader && npm ci --prefer-offline --no-audit"]
