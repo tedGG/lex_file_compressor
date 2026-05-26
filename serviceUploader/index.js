@@ -309,12 +309,10 @@ async function processCompressionJob(jobId) {
 
 async function compressPdf(pdfBytes, quality, scale, onProgress) {
   const os = require("os");
-  const { execFile } = require("child_process");
 
   const tmpDir = os.tmpdir();
   const timestamp = Date.now();
   const inputPath = path.join(tmpDir, `pdf_input_${timestamp}.pdf`);
-  const outputPath = path.join(tmpDir, `pdf_output_${timestamp}.pdf`);
 
   fs.writeFileSync(inputPath, Buffer.from(pdfBytes));
 
@@ -329,9 +327,43 @@ async function compressPdf(pdfBytes, quality, scale, onProgress) {
   const targetDpi = Math.max(36, Math.round(150 * scale));
   const jpegQuality = Math.round(quality * 100);
 
-  console.log(`Ghostscript: preset=${pdfSettings}, imageDPI=${targetDpi}, jpegQuality=${jpegQuality}`);
-
   if (onProgress) onProgress(0, 1);
+
+  try {
+    const originalSize = pdfBytes.length || pdfBytes.byteLength;
+
+    // First pass: use the caller-requested preset/quality
+    let compressed = await runGhostscript(inputPath, pdfSettings, targetDpi, jpegQuality);
+
+    // If output is not smaller, retry once with the most aggressive settings
+    const moreAggressive = pdfSettings !== "/screen" || targetDpi > 72 || jpegQuality > 40;
+    if (compressed.length >= originalSize && moreAggressive) {
+      console.log(`Output (${(compressed.length / 1024).toFixed(1)} KB) ≥ original (${(originalSize / 1024).toFixed(1)} KB) — retrying with /screen @ jpegQ 40`);
+      const retry = await runGhostscript(inputPath, "/screen", 72, 40);
+      if (retry.length < compressed.length) compressed = retry;
+    }
+
+    // If still not smaller than original, return the original bytes
+    if (compressed.length >= originalSize) {
+      console.log(`Compression cannot reduce this PDF further — keeping original (${(originalSize / 1024).toFixed(1)} KB)`);
+      if (onProgress) onProgress(1, 1);
+      return new Uint8Array(pdfBytes.buffer ? pdfBytes.buffer.slice(pdfBytes.byteOffset, pdfBytes.byteOffset + pdfBytes.byteLength) : pdfBytes);
+    }
+
+    if (onProgress) onProgress(1, 1);
+    return compressed;
+  } finally {
+    try { fs.unlinkSync(inputPath); } catch (_) {}
+  }
+}
+
+function runGhostscript(inputPath, pdfSettings, targetDpi, jpegQuality) {
+  const os = require("os");
+  const { execFile } = require("child_process");
+
+  const outputPath = path.join(os.tmpdir(), `pdf_output_${Date.now()}_${Math.random().toString(36).slice(2, 8)}.pdf`);
+
+  console.log(`Ghostscript: preset=${pdfSettings}, imageDPI=${targetDpi}, jpegQuality=${jpegQuality}`);
 
   return new Promise((resolve, reject) => {
     execFile("gs", [
@@ -353,9 +385,6 @@ async function compressPdf(pdfBytes, quality, scale, onProgress) {
       `-sOutputFile=${outputPath}`,
       inputPath
     ], { timeout: 300000 }, (error) => {
-      // Clean up input
-      try { fs.unlinkSync(inputPath); } catch (_) {}
-
       if (error) {
         try { fs.unlinkSync(outputPath); } catch (_) {}
         reject(new Error(`Ghostscript failed: ${error.message}`));
@@ -365,7 +394,6 @@ async function compressPdf(pdfBytes, quality, scale, onProgress) {
       try {
         const result = fs.readFileSync(outputPath);
         fs.unlinkSync(outputPath);
-        if (onProgress) onProgress(1, 1);
         resolve(new Uint8Array(result));
       } catch (readErr) {
         reject(new Error(`Failed to read compressed PDF: ${readErr.message}`));
