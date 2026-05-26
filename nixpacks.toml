@@ -1,7 +1,8 @@
 [phases.setup]
 nixPkgs = [
   "nodejs_18",
-  "ghostscript"
+  "ghostscript",
+  "mupdf"
 ]
 
 [phases.install]

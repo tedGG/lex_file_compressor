@@ -343,6 +343,22 @@ async function compressPdf(pdfBytes, quality, scale, onProgress) {
       if (retry.length < compressed.length) compressed = retry;
     }
 
+    // If Ghostscript still can't reduce, try MuPDF — handles JPEG2000/JBIG2 sources that Ghostscript bloats
+    if (compressed.length >= originalSize) {
+      console.log(`Ghostscript output (${(compressed.length / 1024).toFixed(1)} KB) ≥ original — trying MuPDF fallback`);
+      try {
+        const mupdfOut = await runMutool(inputPath);
+        if (mupdfOut.length < compressed.length) {
+          console.log(`MuPDF result: ${(mupdfOut.length / 1024).toFixed(1)} KB`);
+          compressed = mupdfOut;
+        } else {
+          console.log(`MuPDF output (${(mupdfOut.length / 1024).toFixed(1)} KB) did not beat best Ghostscript result`);
+        }
+      } catch (mupdfErr) {
+        console.warn(`MuPDF fallback failed: ${mupdfErr.message}`);
+      }
+    }
+
     // If still not smaller than original, return the original bytes
     if (compressed.length >= originalSize) {
       console.log(`Compression cannot reduce this PDF further — keeping original (${(originalSize / 1024).toFixed(1)} KB)`);
@@ -355,6 +371,38 @@ async function compressPdf(pdfBytes, quality, scale, onProgress) {
   } finally {
     try { fs.unlinkSync(inputPath); } catch (_) {}
   }
+}
+
+function runMutool(inputPath) {
+  const os = require("os");
+  const { execFile } = require("child_process");
+
+  const outputPath = path.join(os.tmpdir(), `pdf_mupdf_${Date.now()}_${Math.random().toString(36).slice(2, 8)}.pdf`);
+
+  console.log(`MuPDF: mutool convert with compress,compress-images,compress-fonts,sanitize,garbage=deduplicate`);
+
+  return new Promise((resolve, reject) => {
+    execFile("mutool", [
+      "convert",
+      "-o", outputPath,
+      "-O", "compress,compress-images,compress-fonts,sanitize,garbage=deduplicate",
+      inputPath
+    ], { timeout: 300000 }, (error) => {
+      if (error) {
+        try { fs.unlinkSync(outputPath); } catch (_) {}
+        reject(new Error(`mutool failed: ${error.message}`));
+        return;
+      }
+
+      try {
+        const result = fs.readFileSync(outputPath);
+        fs.unlinkSync(outputPath);
+        resolve(new Uint8Array(result));
+      } catch (readErr) {
+        reject(new Error(`Failed to read mutool output: ${readErr.message}`));
+      }
+    });
+  });
 }
 
 function runGhostscript(inputPath, pdfSettings, targetDpi, jpegQuality) {
