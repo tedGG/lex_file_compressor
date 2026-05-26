@@ -57,6 +57,19 @@ async function warmUpServer() {
       });
     });
 
+    // mutool is optional — used only as a fallback when Ghostscript can't reduce
+    await new Promise((resolve) => {
+      execFile("mutool", ["-v"], (error, stdout, stderr) => {
+        if (error) {
+          console.warn(`⚠ mutool (MuPDF) not found — fallback compression disabled`);
+        } else {
+          const version = (stdout || stderr || "").trim().split("\n")[0];
+          console.log(`✓ mutool ${version} available`);
+        }
+        resolve();
+      });
+    });
+
     isServerReady = true;
     console.log("✓ Server is fully ready!");
     return true;
