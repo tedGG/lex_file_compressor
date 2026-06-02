@@ -359,12 +359,12 @@ async function compressPdf(pdfBytes, quality, scale, onProgress) {
     }
 
     // If Ghostscript's reduction is small, also try MuPDF — handles JPEG2000/JBIG2 sources that Ghostscript bloats
-    const MUPDF_TRIGGER_REDUCTION = 0.15;
+    const FALLBACK_TRIGGER_REDUCTION = 0.15;
     const gsReduction = 1 - compressed.length / originalSize;
-    if (gsReduction < MUPDF_TRIGGER_REDUCTION) {
+    if (gsReduction < FALLBACK_TRIGGER_REDUCTION) {
       const reasonMsg = compressed.length >= originalSize
         ? `≥ original`
-        : `only ${(gsReduction * 100).toFixed(1)}% reduction (threshold ${MUPDF_TRIGGER_REDUCTION * 100}%)`;
+        : `only ${(gsReduction * 100).toFixed(1)}% reduction (threshold ${FALLBACK_TRIGGER_REDUCTION * 100}%)`;
       console.log(`Ghostscript output (${(compressed.length / 1024).toFixed(1)} KB) ${reasonMsg} — trying MuPDF fallback`);
       try {
         const mupdfOut = await runMupdf(pdfBytes);
@@ -376,6 +376,23 @@ async function compressPdf(pdfBytes, quality, scale, onProgress) {
         }
       } catch (mupdfErr) {
         console.warn(`MuPDF fallback failed: ${mupdfErr.message}`);
+      }
+    }
+
+    // Final escalation: if best result is still below threshold, run aggressive Ghostscript (lossy)
+    const bestReduction = 1 - compressed.length / originalSize;
+    if (bestReduction < FALLBACK_TRIGGER_REDUCTION) {
+      console.log(`Best result (${(compressed.length / 1024).toFixed(1)} KB, ${(bestReduction * 100).toFixed(1)}% reduction) still below threshold — trying aggressive Ghostscript pass (DPI=50, jpegQ=30)`);
+      try {
+        const aggressiveOut = await runGhostscript(inputPath, "/screen", 50, 30);
+        if (aggressiveOut.length < compressed.length) {
+          console.log(`Aggressive Ghostscript result: ${(aggressiveOut.length / 1024).toFixed(1)} KB`);
+          compressed = aggressiveOut;
+        } else {
+          console.log(`Aggressive Ghostscript output (${(aggressiveOut.length / 1024).toFixed(1)} KB) did not beat best result`);
+        }
+      } catch (aggErr) {
+        console.warn(`Aggressive Ghostscript pass failed: ${aggErr.message}`);
       }
     }
 
