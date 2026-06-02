@@ -382,9 +382,9 @@ async function compressPdf(pdfBytes, quality, scale, onProgress) {
     // Final escalation: if best result is still below threshold, run aggressive Ghostscript (lossy)
     const bestReduction = 1 - compressed.length / originalSize;
     if (bestReduction < FALLBACK_TRIGGER_REDUCTION) {
-      console.log(`Best result (${(compressed.length / 1024).toFixed(1)} KB, ${(bestReduction * 100).toFixed(1)}% reduction) still below threshold — trying aggressive Ghostscript pass (color/gray DPI=150, mono DPI=300, jpegQ=75, forced DCTEncode)`);
+      console.log(`Best result (${(compressed.length / 1024).toFixed(1)} KB, ${(bestReduction * 100).toFixed(1)}% reduction) still below threshold — trying aggressive Ghostscript pass (color/gray DPI=150, mono DPI=300, jpegQ=35, forced DCTEncode)`);
       try {
-        const aggressiveOut = await runGhostscript(inputPath, "/screen", 150, 75, 300, true);
+        const aggressiveOut = await runGhostscript(inputPath, "/screen", 150, 35, 300, true);
         if (aggressiveOut.length < compressed.length) {
           console.log(`Aggressive Ghostscript result: ${(aggressiveOut.length / 1024).toFixed(1)} KB`);
           compressed = aggressiveOut;
@@ -473,13 +473,6 @@ function runGhostscript(inputPath, pdfSettings, targetDpi, jpegQuality, monoDpi 
     `-dMonoImageResolution=${monoDpi}`,
     `-dJPEGQ=${jpegQuality}`,
   ];
-
-  if (forceLossy) {
-    args.push(
-      "-dColorImageDownsampleThreshold=1.0",
-      "-dGrayImageDownsampleThreshold=1.0",
-    );
-  }
 
   args.push(`-sOutputFile=${outputPath}`);
 
