@@ -358,9 +358,14 @@ async function compressPdf(pdfBytes, quality, scale, onProgress) {
       if (retry.length < compressed.length) compressed = retry;
     }
 
-    // If Ghostscript still can't reduce, try MuPDF — handles JPEG2000/JBIG2 sources that Ghostscript bloats
-    if (compressed.length >= originalSize) {
-      console.log(`Ghostscript output (${(compressed.length / 1024).toFixed(1)} KB) ≥ original — trying MuPDF fallback`);
+    // If Ghostscript's reduction is small, also try MuPDF — handles JPEG2000/JBIG2 sources that Ghostscript bloats
+    const MUPDF_TRIGGER_REDUCTION = 0.15;
+    const gsReduction = 1 - compressed.length / originalSize;
+    if (gsReduction < MUPDF_TRIGGER_REDUCTION) {
+      const reasonMsg = compressed.length >= originalSize
+        ? `≥ original`
+        : `only ${(gsReduction * 100).toFixed(1)}% reduction (threshold ${MUPDF_TRIGGER_REDUCTION * 100}%)`;
+      console.log(`Ghostscript output (${(compressed.length / 1024).toFixed(1)} KB) ${reasonMsg} — trying MuPDF fallback`);
       try {
         const mupdfOut = await runMupdf(pdfBytes);
         if (mupdfOut.length < compressed.length) {
