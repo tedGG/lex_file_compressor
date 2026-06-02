@@ -382,9 +382,9 @@ async function compressPdf(pdfBytes, quality, scale, onProgress) {
     // Final escalation: if best result is still below threshold, run aggressive Ghostscript (lossy)
     const bestReduction = 1 - compressed.length / originalSize;
     if (bestReduction < FALLBACK_TRIGGER_REDUCTION) {
-      console.log(`Best result (${(compressed.length / 1024).toFixed(1)} KB, ${(bestReduction * 100).toFixed(1)}% reduction) still below threshold — trying aggressive Ghostscript pass (color/gray DPI=100, mono DPI=300, jpegQ=70, forced DCTEncode)`);
+      console.log(`Best result (${(compressed.length / 1024).toFixed(1)} KB, ${(bestReduction * 100).toFixed(1)}% reduction) still below threshold — trying aggressive Ghostscript pass (color/gray DPI=72, mono DPI=300, jpegQ=45, forced DCTEncode)`);
       try {
-        const aggressiveOut = await runGhostscript(inputPath, "/screen", 100, 70, 300, true);
+        const aggressiveOut = await runGhostscript(inputPath, "/screen", 72, 45, 300, true);
         if (aggressiveOut.length < compressed.length) {
           console.log(`Aggressive Ghostscript result: ${(aggressiveOut.length / 1024).toFixed(1)} KB`);
           compressed = aggressiveOut;
@@ -475,26 +475,29 @@ function runGhostscript(inputPath, pdfSettings, targetDpi, jpegQuality, monoDpi 
   ];
 
   if (forceLossy) {
-    const imageDict = `<< /QFactor ${qFactor} /Blend 1 /HSample [2 1 1 2] /VSample [2 1 1 2] >>`;
     args.push(
       "-dColorImageDownsampleThreshold=1.0",
       "-dGrayImageDownsampleThreshold=1.0",
-      "-dAutoFilterColorImages=false",
-      "-dColorImageFilter=/DCTEncode",
-      `-dColorImageDict=${imageDict}`,
-      "-dAutoFilterGrayImages=false",
-      "-dGrayImageFilter=/DCTEncode",
-      `-dGrayImageDict=${imageDict}`,
     );
   }
 
-  args.push(`-sOutputFile=${outputPath}`, inputPath);
+  args.push(`-sOutputFile=${outputPath}`);
+
+  if (forceLossy) {
+    // Use PostScript injection for image dict — more reliable than -dColorImageDict across GS versions
+    const dict = `<< /QFactor ${qFactor} /Blend 1 /HSamples [2 1 1 2] /VSamples [2 1 1 2] >>`;
+    const psCmd = `<< /AutoFilterColorImages false /ColorImageFilter /DCTEncode /ColorImageDict ${dict} /AutoFilterGrayImages false /GrayImageFilter /DCTEncode /GrayImageDict ${dict} >> setdistillerparams`;
+    args.push("-c", psCmd, "-f", inputPath);
+  } else {
+    args.push(inputPath);
+  }
 
   return new Promise((resolve, reject) => {
-    execFile("gs", args, { timeout: 300000 }, (error) => {
+    execFile("gs", args, { timeout: 300000, maxBuffer: 10 * 1024 * 1024 }, (error, stdout, stderr) => {
       if (error) {
         try { fs.unlinkSync(outputPath); } catch (_) {}
-        reject(new Error(`Ghostscript failed: ${error.message}`));
+        const stderrTail = stderr ? `\nstderr: ${stderr.toString().trim().slice(-800)}` : "";
+        reject(new Error(`Ghostscript failed: ${error.message}${stderrTail}`));
         return;
       }
 
