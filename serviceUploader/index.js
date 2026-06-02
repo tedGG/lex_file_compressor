@@ -382,9 +382,9 @@ async function compressPdf(pdfBytes, quality, scale, onProgress) {
     // Final escalation: if best result is still below threshold, run aggressive Ghostscript (lossy)
     const bestReduction = 1 - compressed.length / originalSize;
     if (bestReduction < FALLBACK_TRIGGER_REDUCTION) {
-      console.log(`Best result (${(compressed.length / 1024).toFixed(1)} KB, ${(bestReduction * 100).toFixed(1)}% reduction) still below threshold — trying aggressive Ghostscript pass (color/gray DPI=60, mono DPI=300, jpegQ=80)`);
+      console.log(`Best result (${(compressed.length / 1024).toFixed(1)} KB, ${(bestReduction * 100).toFixed(1)}% reduction) still below threshold — trying aggressive Ghostscript pass (color/gray DPI=100, mono DPI=300, jpegQ=70, forced DCTEncode)`);
       try {
-        const aggressiveOut = await runGhostscript(inputPath, "/screen", 60, 80, 300);
+        const aggressiveOut = await runGhostscript(inputPath, "/screen", 100, 70, 300, true);
         if (aggressiveOut.length < compressed.length) {
           console.log(`Aggressive Ghostscript result: ${(aggressiveOut.length / 1024).toFixed(1)} KB`);
           compressed = aggressiveOut;
@@ -434,34 +434,64 @@ async function runMupdf(pdfBytes) {
   }
 }
 
-function runGhostscript(inputPath, pdfSettings, targetDpi, jpegQuality, monoDpi = targetDpi) {
+function qualityToQFactor(quality) {
+  // Ghostscript QFactor for DCTEncode: lower = better quality
+  // Calibrated against GS defaults: /printer (Q~95)=0.15, /ebook (Q~75)=0.40, /screen (Q~50)=0.76
+  if (quality >= 95) return 0.15;
+  if (quality >= 85) return 0.25;
+  if (quality >= 75) return 0.40;
+  if (quality >= 65) return 0.55;
+  if (quality >= 50) return 0.76;
+  if (quality >= 35) return 1.0;
+  if (quality >= 20) return 1.3;
+  return 1.6;
+}
+
+function runGhostscript(inputPath, pdfSettings, targetDpi, jpegQuality, monoDpi = targetDpi, forceLossy = false) {
   const os = require("os");
   const { execFile } = require("child_process");
 
   const outputPath = path.join(os.tmpdir(), `pdf_output_${Date.now()}_${Math.random().toString(36).slice(2, 8)}.pdf`);
 
-  console.log(`Ghostscript: preset=${pdfSettings}, imageDPI=${targetDpi}, monoDPI=${monoDpi}, jpegQuality=${jpegQuality}`);
+  const qFactor = qualityToQFactor(jpegQuality);
+  console.log(`Ghostscript: preset=${pdfSettings}, imageDPI=${targetDpi}, monoDPI=${monoDpi}, jpegQuality=${jpegQuality}${forceLossy ? ` (forced DCTEncode, QFactor=${qFactor})` : ""}`);
+
+  const args = [
+    "-sDEVICE=pdfwrite",
+    "-dCompatibilityLevel=1.4",
+    `-dPDFSETTINGS=${pdfSettings}`,
+    "-dNOPAUSE",
+    "-dBATCH",
+    "-dQUIET",
+    "-dDownsampleColorImages=true",
+    `-dColorImageResolution=${targetDpi}`,
+    "-dColorImageDownsampleType=/Bicubic",
+    "-dDownsampleGrayImages=true",
+    `-dGrayImageResolution=${targetDpi}`,
+    "-dGrayImageDownsampleType=/Bicubic",
+    "-dDownsampleMonoImages=true",
+    `-dMonoImageResolution=${monoDpi}`,
+    `-dJPEGQ=${jpegQuality}`,
+  ];
+
+  if (forceLossy) {
+    const imageDict = `<< /QFactor ${qFactor} /Blend 1 /HSample [2 1 1 2] /VSample [2 1 1 2] >>`;
+    args.push(
+      "-dColorImageDownsampleThreshold=1.0",
+      "-dGrayImageDownsampleThreshold=1.0",
+      "-dAutoFilterColorImages=false",
+      "-dColorImageFilter=/DCTEncode",
+      `-dColorImageDict=${imageDict}`,
+      "-dAutoFilterGrayImages=false",
+      "-dGrayImageFilter=/DCTEncode",
+      `-dGrayImageDict=${imageDict}`,
+    );
+  }
+
+  args.push(`-sOutputFile=${outputPath}`, inputPath);
 
   return new Promise((resolve, reject) => {
-    execFile("gs", [
-      "-sDEVICE=pdfwrite",
-      "-dCompatibilityLevel=1.4",
-      `-dPDFSETTINGS=${pdfSettings}`,
-      "-dNOPAUSE",
-      "-dBATCH",
-      "-dQUIET",
-      "-dDownsampleColorImages=true",
-      `-dColorImageResolution=${targetDpi}`,
-      "-dColorImageDownsampleType=/Bicubic",
-      "-dDownsampleGrayImages=true",
-      `-dGrayImageResolution=${targetDpi}`,
-      "-dGrayImageDownsampleType=/Bicubic",
-      "-dDownsampleMonoImages=true",
-      `-dMonoImageResolution=${monoDpi}`,
-      `-dJPEGQ=${jpegQuality}`,
-      `-sOutputFile=${outputPath}`,
-      inputPath
-    ], { timeout: 300000 }, (error) => {
+    execFile("gs", args, { timeout: 300000 }, (error) => {
       if (error) {
         try { fs.unlinkSync(outputPath); } catch (_) {}
         reject(new Error(`Ghostscript failed: ${error.message}`));
