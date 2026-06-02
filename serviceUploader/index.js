@@ -382,9 +382,9 @@ async function compressPdf(pdfBytes, quality, scale, onProgress) {
     // Final escalation: if best result is still below threshold, run aggressive Ghostscript (lossy)
     const bestReduction = 1 - compressed.length / originalSize;
     if (bestReduction < FALLBACK_TRIGGER_REDUCTION) {
-      console.log(`Best result (${(compressed.length / 1024).toFixed(1)} KB, ${(bestReduction * 100).toFixed(1)}% reduction) still below threshold — trying aggressive Ghostscript pass (DPI=50, jpegQ=30)`);
+      console.log(`Best result (${(compressed.length / 1024).toFixed(1)} KB, ${(bestReduction * 100).toFixed(1)}% reduction) still below threshold — trying aggressive Ghostscript pass (DPI=60, jpegQ=35)`);
       try {
-        const aggressiveOut = await runGhostscript(inputPath, "/screen", 50, 30);
+        const aggressiveOut = await runGhostscript(inputPath, "/screen", 60, 35);
         if (aggressiveOut.length < compressed.length) {
           console.log(`Aggressive Ghostscript result: ${(aggressiveOut.length / 1024).toFixed(1)} KB`);
           compressed = aggressiveOut;
