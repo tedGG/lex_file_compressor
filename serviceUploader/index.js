@@ -382,9 +382,9 @@ async function compressPdf(pdfBytes, quality, scale, onProgress) {
     // Final escalation: if best result is still below threshold, run aggressive Ghostscript (lossy)
     const bestReduction = 1 - compressed.length / originalSize;
     if (bestReduction < FALLBACK_TRIGGER_REDUCTION) {
-      console.log(`Best result (${(compressed.length / 1024).toFixed(1)} KB, ${(bestReduction * 100).toFixed(1)}% reduction) still below threshold — trying aggressive Ghostscript pass (DPI=60, jpegQ=35)`);
+      console.log(`Best result (${(compressed.length / 1024).toFixed(1)} KB, ${(bestReduction * 100).toFixed(1)}% reduction) still below threshold — trying aggressive Ghostscript pass (color/gray DPI=60, mono DPI=300, jpegQ=35)`);
       try {
-        const aggressiveOut = await runGhostscript(inputPath, "/screen", 60, 35);
+        const aggressiveOut = await runGhostscript(inputPath, "/screen", 60, 35, 300);
         if (aggressiveOut.length < compressed.length) {
           console.log(`Aggressive Ghostscript result: ${(aggressiveOut.length / 1024).toFixed(1)} KB`);
           compressed = aggressiveOut;
@@ -434,13 +434,13 @@ async function runMupdf(pdfBytes) {
   }
 }
 
-function runGhostscript(inputPath, pdfSettings, targetDpi, jpegQuality) {
+function runGhostscript(inputPath, pdfSettings, targetDpi, jpegQuality, monoDpi = targetDpi) {
   const os = require("os");
   const { execFile } = require("child_process");
 
   const outputPath = path.join(os.tmpdir(), `pdf_output_${Date.now()}_${Math.random().toString(36).slice(2, 8)}.pdf`);
 
-  console.log(`Ghostscript: preset=${pdfSettings}, imageDPI=${targetDpi}, jpegQuality=${jpegQuality}`);
+  console.log(`Ghostscript: preset=${pdfSettings}, imageDPI=${targetDpi}, monoDPI=${monoDpi}, jpegQuality=${jpegQuality}`);
 
   return new Promise((resolve, reject) => {
     execFile("gs", [
@@ -457,7 +457,7 @@ function runGhostscript(inputPath, pdfSettings, targetDpi, jpegQuality) {
       `-dGrayImageResolution=${targetDpi}`,
       "-dGrayImageDownsampleType=/Bicubic",
       "-dDownsampleMonoImages=true",
-      `-dMonoImageResolution=${targetDpi}`,
+      `-dMonoImageResolution=${monoDpi}`,
       `-dJPEGQ=${jpegQuality}`,
       `-sOutputFile=${outputPath}`,
       inputPath
