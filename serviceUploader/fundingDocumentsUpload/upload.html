@@ -7,46 +7,35 @@
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
     body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #f5f5f5; min-height: 100vh; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 20px; }
-    .card { background: #fff; border-radius: 16px; box-shadow: 0 1px 3px rgba(0,0,0,0.08), 0 8px 30px rgba(0,0,0,0.07); padding: 20px 25px; max-width: 480px; width: 100%; text-align: center; }
-    .logo { margin-bottom: 6px; }
+    .card { background: #fff; border-radius: 16px; box-shadow: 0 1px 3px rgba(0,0,0,0.08), 0 8px 30px rgba(0,0,0,0.07); padding: 24px 28px; max-width: 480px; width: 100%; }
+    .logo { text-align: center; margin-bottom: 6px; }
     .logo img { max-height: 220px; }
-    h1 { font-size: 20px; color: #111; margin-bottom: 24px; font-weight: 600; letter-spacing: -0.3px; }
-    .drop-zone { border: 2px dashed #ccc; border-radius: 12px; padding: 48px 24px; cursor: pointer; transition: all 0.25s ease; position: relative; margin-bottom: 8px; }
-    .drop-zone:hover { border-color: #999; background: #fafafa; }
-    .drop-zone.dragover { border-color: #333; background: #f5f5f5; transform: scale(1.01); }
-    .drop-zone input { position: absolute; inset: 0; opacity: 0; cursor: pointer; }
-    .drop-icon { width: 48px; height: 48px; margin: 0 auto 14px; background: #f0f0f0; border-radius: 50%; display: flex; align-items: center; justify-content: center; }
-    .drop-icon svg { width: 24px; height: 24px; color: #555; }
-    .drop-zone p { color: #999; font-size: 14px; line-height: 1.5; }
-    .drop-zone p b { color: #111; font-weight: 500; }
-    .drop-zone .hint { font-size: 12px; color: #bbb; margin-top: 8px; }
-    .file-list { margin-bottom: 20px; }
-    .file-item { display: flex; align-items: center; gap: 10px; text-align: left; padding: 10px 12px; background: #fafafa; border: 1px solid #eee; border-radius: 10px; margin-top: 8px; }
-    .file-item .fi-icon { width: 34px; height: 34px; background: #f0f0f0; border-radius: 8px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
-    .file-item .fi-icon svg { width: 18px; height: 18px; color: #555; }
-    .file-item .fi-details { overflow: hidden; flex: 1; }
-    .file-item .fi-name { font-size: 13px; font-weight: 500; color: #111; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-    .file-item .fi-size { font-size: 11px; color: #999; margin-top: 1px; }
-    .file-item .fi-remove { background: none; border: none; cursor: pointer; color: #bbb; padding: 4px; flex-shrink: 0; display: flex; align-items: center; }
-    .file-item .fi-remove:hover { color: #e00; }
-    .btn { width: 100%; padding: 14px; background: #111; color: #fff; border: none; border-radius: 10px; font-size: 15px; font-weight: 600; cursor: pointer; transition: all 0.2s; letter-spacing: 0.2px; display: flex; align-items: center; justify-content: center; gap: 8px; }
+    h1 { font-size: 15px; color: #111; margin-bottom: 20px; font-weight: 400; }
+    .field-group { margin-bottom: 18px; }
+    .field-label { font-size: 11px; font-weight: 700; color: #111; letter-spacing: 0.6px; text-transform: uppercase; margin-bottom: 8px; }
+    .file-row { display: flex; align-items: center; gap: 10px; padding: 10px 12px; background: #fafafa; border: 1px solid #e5e5e5; border-radius: 10px; }
+    .choose-btn { flex-shrink: 0; padding: 5px 12px; font-size: 13px; font-weight: 500; color: #111; background: #fff; border: 1px solid #ccc; border-radius: 6px; cursor: pointer; white-space: nowrap; }
+    .choose-btn:hover { background: #f5f5f5; }
+    .file-name { font-size: 13px; color: #999; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .file-name.selected { color: #111; }
+    .file-clear { background: none; border: none; cursor: pointer; color: #bbb; padding: 2px 4px; flex-shrink: 0; font-size: 16px; line-height: 1; display: none; }
+    .file-clear:hover { color: #e00; }
+    .misc-list { margin-top: 6px; }
+    .misc-item { display: flex; align-items: center; gap: 8px; padding: 7px 10px; background: #f5f5f5; border-radius: 8px; margin-top: 4px; font-size: 12px; color: #333; }
+    .misc-item span { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .misc-remove { background: none; border: none; cursor: pointer; color: #bbb; font-size: 15px; line-height: 1; flex-shrink: 0; }
+    .misc-remove:hover { color: #e00; }
+    .btn { width: 100%; padding: 13px; background: #111; color: #fff; border: none; border-radius: 10px; font-size: 15px; font-weight: 600; cursor: pointer; transition: background 0.2s; display: flex; align-items: center; justify-content: center; gap: 8px; margin-top: 6px; }
     .btn:hover { background: #333; }
     .btn:disabled { background: #ccc; cursor: not-allowed; }
     .btn .btn-spinner { display: inline-block; width: 16px; height: 16px; border: 2px solid rgba(255,255,255,0.3); border-top-color: #fff; border-radius: 50%; animation: spin 0.6s linear infinite; }
-    .status { margin-top: 16px; padding: 12px 16px; border-radius: 10px; font-size: 13px; display: none; text-align: left; }
-    .status.success { display: block; background: #f0faf0; color: #229b22; }
-    .status.error { display: block; background: #fef2f2; color: #b91c1c; }
-    .status.loading { display: block; background: #f5f5f5; color: #333; }
-    .spinner { display: inline-block; width: 13px; height: 13px; border: 2px solid #ddd; border-top-color: #333; border-radius: 50%; animation: spin 0.6s linear infinite; vertical-align: middle; margin-right: 6px; }
     @keyframes spin { to { transform: rotate(360deg); } }
     .toast-container { position: fixed; top: 20px; left: 50%; transform: translateX(-50%); z-index: 9999; display: flex; flex-direction: column; gap: 10px; width: 90%; max-width: 420px; }
-    .toast { display: flex; align-items: center; gap: 12px; padding: 14px 16px; border-radius: 16px; color: #fff; animation: toastIn 0.35s ease; position: relative; }
+    .toast { display: flex; align-items: center; gap: 12px; padding: 14px 16px; border-radius: 16px; color: #fff; animation: toastIn 0.35s ease; }
     .toast.removing { animation: toastOut 0.3s ease forwards; }
     .toast.success { background: linear-gradient(135deg, #1a5c2a, #236b34); }
     .toast.error { background: linear-gradient(135deg, #6b2020, #8b2c2c); }
-    .toast-icon { width: 36px; height: 36px; border-radius: 50%; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
-    .toast.success .toast-icon { background: rgba(255,255,255,0.15); }
-    .toast.error .toast-icon { background: rgba(255,255,255,0.15); }
+    .toast-icon { width: 36px; height: 36px; border-radius: 50%; display: flex; align-items: center; justify-content: center; flex-shrink: 0; background: rgba(255,255,255,0.15); }
     .toast-icon svg { width: 20px; height: 20px; color: #fff; }
     .toast-body { flex: 1; min-width: 0; }
     .toast-title { font-size: 14px; font-weight: 600; }
@@ -62,104 +51,135 @@
   <div class="toast-container" id="toastContainer"></div>
   <div class="logo"><img src="/logo.png" alt="Company Logo"></div>
   <div class="card">
-    <h1>Upload Funding Documents</h1>
+    <h1>Upload the following documents.</h1>
     <form id="uploadForm">
-      <div class="drop-zone" id="dropZone">
-        <div class="drop-icon"><svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M12 16.5V9.75m0 0l3 3m-3-3l-3 3M6.75 19.5a4.5 4.5 0 01-1.41-8.775 5.25 5.25 0 0110.338-2.32 3.75 3.75 0 013.578 4.788A4.5 4.5 0 0118 19.5H6.75z"/></svg></div>
-        <p>Drag & drop files here<br>or <b>browse</b></p>
-        <div class="hint">Up to 10 files, 200 MB total</div>
-        <input type="file" id="fileInput" multiple>
+
+      <!-- Driver's License -->
+      <div class="field-group">
+        <div class="field-label">Driver's License</div>
+        <div class="file-row">
+          <button type="button" class="choose-btn" onclick="document.getElementById('dlInput').click()">Choose file</button>
+          <span class="file-name" id="dlName">No file chosen</span>
+          <button type="button" class="file-clear" id="dlClear" onclick="clearSingle('dl')">&#x2715;</button>
+        </div>
+        <input type="file" id="dlInput" style="display:none">
       </div>
-      <div class="file-list" id="fileList"></div>
+
+      <!-- Voided Check -->
+      <div class="field-group">
+        <div class="field-label">Voided Check</div>
+        <div class="file-row">
+          <button type="button" class="choose-btn" onclick="document.getElementById('vcInput').click()">Choose file</button>
+          <span class="file-name" id="vcName">No file chosen</span>
+          <button type="button" class="file-clear" id="vcClear" onclick="clearSingle('vc')">&#x2715;</button>
+        </div>
+        <input type="file" id="vcInput" style="display:none">
+      </div>
+
+      <!-- Misc Docs -->
+      <div class="field-group">
+        <div class="field-label">Misc Docs</div>
+        <div class="file-row">
+          <button type="button" class="choose-btn" onclick="document.getElementById('miscInput').click()">Choose files</button>
+          <span class="file-name" id="miscName">No file chosen</span>
+        </div>
+        <input type="file" id="miscInput" style="display:none" multiple>
+        <div class="misc-list" id="miscList"></div>
+      </div>
+
       <button type="submit" class="btn" id="submitBtn" disabled>Upload</button>
     </form>
-    <div class="status" id="status"></div>
   </div>
   <script>
-    const MAX_FILES = 10;
-    const MAX_TOTAL = 200 * 1024 * 1024;
     const recordid = '{{RECORD_ID}}';
     const apiKey = '{{API_KEY}}';
     const ownerId = '{{OWNER_ID}}';
-    const dropZone = document.getElementById('dropZone');
-    const fileInput = document.getElementById('fileInput');
-    const fileList = document.getElementById('fileList');
-    const form = document.getElementById('uploadForm');
-    const statusEl = document.getElementById('status');
-    const submitBtn = document.getElementById('submitBtn');
+
+    const singles = { dl: null, vc: null };
+    let miscFiles = [];
+
     const toastContainer = document.getElementById('toastContainer');
-    let selectedFiles = [];
 
     function showToast(type, title, message) {
       const successIcon = '<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>';
       const errorIcon = '<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M9.75 9.75l4.5 4.5m0-4.5l-4.5 4.5M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>';
       const toast = document.createElement('div');
       toast.className = 'toast ' + type;
-      toast.innerHTML = '<div class="toast-icon">' + (type === 'success' ? successIcon : errorIcon) + '</div>' +
+      toast.innerHTML =
+        '<div class="toast-icon">' + (type === 'success' ? successIcon : errorIcon) + '</div>' +
         '<div class="toast-body"><div class="toast-title">' + title + '</div><div class="toast-msg">' + message + '</div></div>' +
         '<button class="toast-close"><svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/></svg></button>';
       toastContainer.appendChild(toast);
-      const removeToast = () => { toast.classList.add('removing'); setTimeout(() => toast.remove(), 300); };
-      toast.querySelector('.toast-close').addEventListener('click', removeToast);
-      setTimeout(removeToast, 10000);
+      const remove = () => { toast.classList.add('removing'); setTimeout(() => toast.remove(), 300); };
+      toast.querySelector('.toast-close').addEventListener('click', remove);
+      setTimeout(remove, 10000);
     }
 
-    function formatSize(bytes) {
-      if (bytes < 1024) return bytes + ' B';
-      if (bytes < 1048576) return (bytes / 1024).toFixed(1) + ' KB';
-      return (bytes / 1048576).toFixed(1) + ' MB';
+    function updateSubmitState() {
+      const hasAny = singles.dl || singles.vc || miscFiles.length > 0;
+      document.getElementById('submitBtn').disabled = !hasAny;
     }
 
-    function totalSize() {
-      return selectedFiles.reduce((sum, f) => sum + f.size, 0);
-    }
-
-    function addFiles(newFiles) {
-      for (const f of newFiles) {
-        if (selectedFiles.length >= MAX_FILES) break;
-        if (selectedFiles.some(s => s.name === f.name && s.size === f.size)) continue;
-        selectedFiles.push(f);
-      }
-      if (totalSize() > MAX_TOTAL) {
-        statusEl.className = 'status error';
-        statusEl.textContent = 'Total file size exceeds 200 MB. Remove some files.';
-      } else {
-        statusEl.style.display = 'none';
-      }
-      renderFiles();
-    }
-
-    function removeFile(index) {
-      selectedFiles.splice(index, 1);
-      if (totalSize() <= MAX_TOTAL) statusEl.style.display = 'none';
-      renderFiles();
-    }
-
-    function renderFiles() {
-      fileList.innerHTML = '';
-      selectedFiles.forEach((f, i) => {
-        const item = document.createElement('div');
-        item.className = 'file-item';
-        item.innerHTML =
-          '<div class="fi-icon"><svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m2.25 0H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z"/></svg></div>' +
-          '<div class="fi-details"><div class="fi-name">' + f.name + '</div><div class="fi-size">' + formatSize(f.size) + '</div></div>' +
-          '<button type="button" class="fi-remove" data-idx="' + i + '"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/></svg></button>';
-        fileList.appendChild(item);
+    // Single-file inputs (Driver's License, Voided Check)
+    ['dl', 'vc'].forEach(key => {
+      const input = document.getElementById(key + 'Input');
+      input.addEventListener('change', () => {
+        if (!input.files.length) return;
+        singles[key] = input.files[0];
+        document.getElementById(key + 'Name').textContent = input.files[0].name;
+        document.getElementById(key + 'Name').classList.add('selected');
+        document.getElementById(key + 'Clear').style.display = 'inline';
+        input.value = '';
+        updateSubmitState();
       });
-      fileList.querySelectorAll('.fi-remove').forEach(btn => {
-        btn.addEventListener('click', () => removeFile(parseInt(btn.dataset.idx)));
-      });
-      submitBtn.disabled = selectedFiles.length === 0 || totalSize() > MAX_TOTAL;
-    }
-
-    dropZone.addEventListener('dragover', e => { e.preventDefault(); dropZone.classList.add('dragover'); });
-    dropZone.addEventListener('dragleave', () => dropZone.classList.remove('dragover'));
-    dropZone.addEventListener('drop', e => {
-      e.preventDefault();
-      dropZone.classList.remove('dragover');
-      if (e.dataTransfer.files.length) addFiles(e.dataTransfer.files);
     });
-    fileInput.addEventListener('change', () => { addFiles(fileInput.files); fileInput.value = ''; });
+
+    function clearSingle(key) {
+      singles[key] = null;
+      document.getElementById(key + 'Name').textContent = 'No file chosen';
+      document.getElementById(key + 'Name').classList.remove('selected');
+      document.getElementById(key + 'Clear').style.display = 'none';
+      updateSubmitState();
+    }
+
+    // Misc Docs multi-file input
+    const miscInput = document.getElementById('miscInput');
+    miscInput.addEventListener('change', () => {
+      for (const f of miscInput.files) {
+        if (!miscFiles.some(m => m.name === f.name && m.size === f.size)) miscFiles.push(f);
+      }
+      miscInput.value = '';
+      renderMisc();
+      updateSubmitState();
+    });
+
+    function removeMisc(index) {
+      miscFiles.splice(index, 1);
+      renderMisc();
+      updateSubmitState();
+    }
+
+    function renderMisc() {
+      const list = document.getElementById('miscList');
+      const nameEl = document.getElementById('miscName');
+      list.innerHTML = '';
+      if (miscFiles.length === 0) {
+        nameEl.textContent = 'No file chosen';
+        nameEl.classList.remove('selected');
+        return;
+      }
+      nameEl.textContent = miscFiles.length + ' file' + (miscFiles.length > 1 ? 's' : '') + ' chosen';
+      nameEl.classList.add('selected');
+      miscFiles.forEach((f, i) => {
+        const item = document.createElement('div');
+        item.className = 'misc-item';
+        item.innerHTML = '<span>' + f.name + '</span><button type="button" class="misc-remove" data-i="' + i + '">&#x2715;</button>';
+        list.appendChild(item);
+      });
+      list.querySelectorAll('.misc-remove').forEach(btn => {
+        btn.addEventListener('click', () => removeMisc(parseInt(btn.dataset.i)));
+      });
+    }
 
     function pollJobStatus(jobId, fileName) {
       const poll = setInterval(async () => {
@@ -189,15 +209,17 @@
       }, 3000);
     }
 
-    form.addEventListener('submit', async e => {
+    document.getElementById('uploadForm').addEventListener('submit', async e => {
       e.preventDefault();
-      if (!selectedFiles.length) return;
 
+      const submitBtn = document.getElementById('submitBtn');
       submitBtn.disabled = true;
       submitBtn.innerHTML = '<span class="btn-spinner"></span> Submitting...';
 
       const fd = new FormData();
-      selectedFiles.forEach(f => fd.append('files', f));
+      if (singles.dl)  fd.append('driverLicense', singles.dl);
+      if (singles.vc)  fd.append('voidedCheck', singles.vc);
+      miscFiles.forEach(f => fd.append('miscDocs', f));
 
       try {
         const headers = {};
@@ -208,16 +230,12 @@
 
         submitBtn.textContent = 'Upload';
         submitBtn.disabled = false;
-        selectedFiles = [];
-        renderFiles();
+        singles.dl = null; singles.vc = null; miscFiles = [];
+        clearSingle('dl'); clearSingle('vc'); renderMisc();
 
         if (data.success) {
           const count = data.results.length;
-          const compressing = data.results.filter(r => r.needsCompression).length;
-          let msg = count + ' file(s) submitted for upload.';
-          if (compressing > 0) msg += ' ' + compressing + ' will be compressed.';
-          showToast('success', 'Files Submitted', msg);
-
+          showToast('success', 'Files Submitted', count + ' file(s) submitted for upload.');
           data.results.forEach(r => pollJobStatus(r.jobId, r.fileName));
         } else {
           showToast('error', 'Upload Failed', data.error || 'Upload failed.');
