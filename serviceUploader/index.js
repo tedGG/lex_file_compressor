@@ -508,6 +508,7 @@ function runGhostscript(inputPath, pdfSettings, targetDpi, jpegQuality, monoDpi 
 // --- Document Upload UI & API ---
 
 const uploadHtmlTemplate = fs.readFileSync(path.join(__dirname, 'upload.html'), 'utf8');
+const fundingDocumentsUpload = require('./fundingDocumentsUpload/routes');
 
 app.get("/documents-upload/status/:jobId", (req, res) => {
   const job = jobs.get(req.params.jobId);
@@ -720,6 +721,18 @@ async function onUploadJobDone(batchId) {
     console.error(`[Batch ${batchId}] Failed to update record ${batch.recordid}: ${err.message}`);
   }
 }
+
+// --- Funding Documents Upload ---
+
+fundingDocumentsUpload.registerRoutes(app, {
+  upload,
+  jobs,
+  batches,
+  createJobId,
+  updateJobStatus,
+  processUploadJob,
+  onUploadJobDone
+});
 
 app.listen(port, '0.0.0.0', () => {
   console.log(`PDF Compression API running on port: ${port}`);
