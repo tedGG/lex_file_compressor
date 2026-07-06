@@ -62,7 +62,7 @@ async function processFundingJob(jobId, jobs) {
     job.progress = 50;
     console.log(`[funding][Job ${jobId}] Uploading "${originalName + extension}" to record ${recordid}`);
 
-    const saved = await salesforce.saveFile(basicurl, originalName, fileBytes, {
+    const saved = await salesforce.uploadFile(basicurl, originalName, fileBytes, {
       parentId: recordid,
       pathOnClient: originalName + extension,
       ownerId
