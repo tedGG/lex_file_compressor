@@ -87,7 +87,7 @@ async function processFundingJob(jobId, jobs) {
     job.message = "Upload failed";
     job.error = err.message;
     job.completedAt = Date.now();
-    console.error(`[funding][Job ${jobId}] Failed: ${err.message}`);
+    console.error(`[funding][Job ${jobId}] Failed: ${err.message}`, err.response?.data ? JSON.stringify(err.response.data) : '');
     setTimeout(() => jobs.delete(jobId), 10 * 60 * 1000);
   }
 }
