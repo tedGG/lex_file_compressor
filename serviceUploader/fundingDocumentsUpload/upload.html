@@ -92,8 +92,9 @@
   </div>
   <script>
     const recordid = '{{RECORD_ID}}';
-    const apiKey = '{{API_KEY}}';
     const ownerId = '{{OWNER_ID}}';
+    const headers = { 'X-API-Key': '{{SESSION_TOKEN}}' };
+    if (ownerId) headers['X-Owner-Id'] = ownerId;
 
     const singles = { dl: null, vc: null };
     let miscFiles = [];
@@ -222,9 +223,6 @@
       miscFiles.forEach(f => fd.append('miscDocs', f));
 
       try {
-        const headers = {};
-        if (apiKey) headers['X-API-Key'] = apiKey;
-        if (ownerId) headers['X-Owner-Id'] = ownerId;
         const res = await fetch('/funding-documents-upload/' + recordid, { method: 'POST', body: fd, headers });
         const data = await res.json();
 

@@ -10,6 +10,7 @@ const app = express();
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 200 * 1024 * 1024, files: 10 } });
 app.use(express.static(path.join(__dirname)));
 app.use(express.json({ limit: "100mb" }));
+app.use(express.urlencoded({ extended: false }));
 const port = process.env.PORT || 4000;
 
 const fs = require("fs");
@@ -724,15 +725,7 @@ async function onUploadJobDone(batchId) {
 
 // --- Funding Documents Upload ---
 
-fundingDocumentsUpload.registerRoutes(app, {
-  upload,
-  jobs,
-  batches,
-  createJobId,
-  updateJobStatus,
-  processUploadJob,
-  onUploadJobDone
-});
+fundingDocumentsUpload.registerRoutes(app, { upload, jobs, createJobId });
 
 app.listen(port, '0.0.0.0', () => {
   console.log(`PDF Compression API running on port: ${port}`);
