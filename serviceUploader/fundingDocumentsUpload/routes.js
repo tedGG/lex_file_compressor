@@ -13,10 +13,13 @@ const SF_LOGIN_URL = process.env.SANDBOX_SF_BASE_URL;
 
 const OFFER_REDIRECT_BASE_URL = process.env.FUNDING_OFFER_URL || "";
 
-function buildOfferRedirectUrl(recordId) {
+// `offer` is echoed back exactly as received (encoded but not re-serialized).
+function buildOfferRedirectUrl(recordId, offer) {
   if (!OFFER_REDIRECT_BASE_URL) return "";
   const sep = OFFER_REDIRECT_BASE_URL.includes("?") ? "&" : "?";
-  return `${OFFER_REDIRECT_BASE_URL}${sep}id=${encodeURIComponent(recordId)}&uploaded=success`;
+  let url = `${OFFER_REDIRECT_BASE_URL}${sep}id=${encodeURIComponent(recordId)}&uploaded=success`;
+  if (offer) url += `&offer=${encodeURIComponent(offer)}`;
+  return url;
 }
 
 // Returns { access_token, instance_url } — instance_url must be used for API calls.
@@ -60,9 +63,9 @@ async function uploadContentVersion(title, fileBytes, { recordId, pathOnClient }
 
 const sessionTokens = new Map();
 
-function createSessionToken(recordid, ownerId) {
+function createSessionToken(recordid, ownerId, offer) {
   const token = crypto.randomBytes(24).toString("hex");
-  sessionTokens.set(token, { recordid, ownerId });
+  sessionTokens.set(token, { recordid, ownerId, offer });
   return token;
 }
 
@@ -151,12 +154,26 @@ function registerRoutes(app, { upload, jobs, createJobId }) {
         return res.status(401).send("Unauthorized");
       }
       const ownerId = (req.body && req.body.ownerId) || "";
-      const sessionToken = createSessionToken(req.params.recordid, ownerId);
+
+      // `offer` is an opaque JSON string echoed back on redirect. Keep the raw
+      // string; if it's missing or not valid JSON, just omit it (don't error).
+      let offer = "";
+      const rawOffer = req.body && req.body.offer;
+      if (rawOffer) {
+        try {
+          JSON.parse(rawOffer);
+          offer = rawOffer;
+        } catch (_) {
+          console.warn("[funding] Received offer that is not valid JSON — omitting from redirect");
+        }
+      }
+
+      const sessionToken = createSessionToken(req.params.recordid, ownerId, offer);
       const html = htmlTemplate
         .replace("{{RECORD_ID}}", req.params.recordid)
         .replace("{{SESSION_TOKEN}}", sessionToken)
         .replace("{{OWNER_ID}}", ownerId)
-        .replace("{{OFFER_REDIRECT_URL}}", buildOfferRedirectUrl(req.params.recordid));
+        .replace("{{OFFER_REDIRECT_URL}}", buildOfferRedirectUrl(req.params.recordid, offer));
       return res.send(html);
     }
 
