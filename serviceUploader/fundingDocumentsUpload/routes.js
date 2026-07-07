@@ -8,8 +8,9 @@ const htmlTemplate = fs.readFileSync(path.join(__dirname, "upload.html"), "utf8"
 const MAX_FILE_SIZE_MB = 50;
 
 // Sandbox login endpoint used to request tokens (not the instance URL).
-// Override via SANDBOX_SF_BASE_URL if the sandbox uses a custom My Domain login host.
-const SF_LOGIN_URL = process.env.SANDBOX_SF_BASE_URL || "https://test.salesforce.com";
+// Must be the My Domain host (*.my.salesforce.com), e.g.
+// https://lexingtoncapital--lexbroker.sandbox.my.salesforce.com
+const SF_LOGIN_URL = process.env.SANDBOX_SF_BASE_URL;
 
 // Get an access token for the sandbox org using dedicated funding credentials.
 // Returns { access_token, instance_url } — instance_url must be used for API calls.
