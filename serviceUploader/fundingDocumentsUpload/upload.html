@@ -45,6 +45,12 @@
     .toast-close svg { width: 14px; height: 14px; }
     @keyframes toastIn { from { opacity: 0; transform: translateY(-20px); } to { opacity: 1; transform: translateY(0); } }
     @keyframes toastOut { from { opacity: 1; transform: translateY(0); } to { opacity: 0; transform: translateY(-20px); } }
+    .success-view { display: none; text-align: center; padding: 12px 4px; animation: toastIn 0.4s ease; }
+    .success-view.visible { display: block; }
+    .success-icon { width: 64px; height: 64px; margin: 0 auto 18px; border-radius: 50%; background: #f0faf0; display: flex; align-items: center; justify-content: center; }
+    .success-icon svg { width: 34px; height: 34px; color: #229b22; }
+    .success-title { font-size: 20px; font-weight: 700; color: #111; margin-bottom: 10px; }
+    .success-text { font-size: 14px; line-height: 1.6; color: #555; }
   </style>
 </head>
 <body>
@@ -89,10 +95,23 @@
 
       <button type="submit" class="btn" id="submitBtn" disabled>Upload</button>
     </form>
+
+    <!-- Success view (shown after a successful upload) -->
+    <div class="success-view" id="successView">
+      <div class="success-icon">
+        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+      </div>
+      <h2 class="success-title">Offer Accepted</h2>
+      <p class="success-text">
+        Thank you &mdash; your funding offer has been accepted and your documents were uploaded successfully.
+        Our team will review the submitted documents and follow up with the next steps shortly.
+      </p>
+    </div>
   </div>
   <script>
     const recordid = '{{RECORD_ID}}';
     const ownerId = '{{OWNER_ID}}';
+    const offerRedirectUrl = '{{OFFER_REDIRECT_URL}}';
     const headers = { 'X-API-Key': '{{SESSION_TOKEN}}' };
     if (ownerId) headers['X-Owner-Id'] = ownerId;
 
@@ -232,8 +251,14 @@
         clearSingle('dl'); clearSingle('vc'); renderMisc();
 
         if (data.success) {
-          const count = data.results.length;
-          showToast('success', 'Files Submitted', count + ' file(s) submitted for upload.');
+          // Redirect back to the offer page, which shows its own success message
+          if (offerRedirectUrl) {
+            window.location.href = offerRedirectUrl;
+            return;
+          }
+          // Fallback: no redirect URL configured — show the inline confirmation
+          document.getElementById('uploadForm').style.display = 'none';
+          document.getElementById('successView').classList.add('visible');
           data.results.forEach(r => pollJobStatus(r.jobId, r.fileName));
         } else {
           showToast('error', 'Upload Failed', data.error || 'Upload failed.');

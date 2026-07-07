@@ -7,16 +7,21 @@ const htmlTemplate = fs.readFileSync(path.join(__dirname, "upload.html"), "utf8"
 
 const MAX_FILE_SIZE_MB = 50;
 
-// Sandbox login endpoint used to request tokens (not the instance URL).
-// Must be the My Domain host (*.my.salesforce.com), e.g.
-// https://lexingtoncapital--lexbroker.sandbox.my.salesforce.com
+// Must be the My Domain host (*.my.salesforce.com), NOT the Lightning host —
+// the OAuth token endpoint is only served on My Domain.
 const SF_LOGIN_URL = process.env.SANDBOX_SF_BASE_URL;
 
-// Get an access token for the sandbox org using dedicated funding credentials.
+const OFFER_REDIRECT_BASE_URL = process.env.FUNDING_OFFER_URL || "";
+
+function buildOfferRedirectUrl(recordId) {
+  if (!OFFER_REDIRECT_BASE_URL) return "";
+  const sep = OFFER_REDIRECT_BASE_URL.includes("?") ? "&" : "?";
+  return `${OFFER_REDIRECT_BASE_URL}${sep}id=${encodeURIComponent(recordId)}&uploaded=success`;
+}
+
 // Returns { access_token, instance_url } — instance_url must be used for API calls.
 async function getSandboxToken() {
   const url = `${SF_LOGIN_URL}/services/oauth2/token`;
-  console.log(`[funding] Requesting token from: ${url} (client_id ends ...${(process.env.SANDBOX_CLIENT_ID_SF || "").slice(-6)})`);
 
   const params = new URLSearchParams();
   params.append("grant_type", "client_credentials");
@@ -26,12 +31,9 @@ async function getSandboxToken() {
   const response = await axios.post(url, params, {
     headers: { "Content-Type": "application/x-www-form-urlencoded" }
   });
-  console.log("[funding] Sandbox access token received");
   return response.data;
 }
 
-// Upload a file to Salesforce as a ContentVersion linked to the given record.
-// Mirrors the working portal-submissions upload: JSON body + base64, no OwnerId.
 async function uploadContentVersion(title, fileBytes, { recordId, pathOnClient }) {
   const { access_token, instance_url } = await getSandboxToken();
   const url = `${instance_url}/services/data/v59.0/sobjects/ContentVersion`;
@@ -56,7 +58,6 @@ async function uploadContentVersion(title, fileBytes, { recordId, pathOnClient }
   return response.data;
 }
 
-// Session tokens issued at page load: token -> { recordid, ownerId }
 const sessionTokens = new Map();
 
 function createSessionToken(recordid, ownerId) {
@@ -80,9 +81,9 @@ function fundingUploadMiddleware(upload) {
 function collectFiles(reqFiles) {
   const labeled = [];
   const buckets = [
-    { field: "driverLicense", label: "Drivers_License" },
-    { field: "voidedCheck",   label: "Voided_Check"    },
-    { field: "miscDocs",      label: "Misc"             }
+    { field: "driverLicense", label: "Driver License" },
+    { field: "voidedCheck",   label: "Voided Check"   },
+    { field: "miscDocs",      label: "Misc Docs"      }
   ];
   for (const { field, label } of buckets) {
     for (const file of (reqFiles[field] || [])) {
@@ -141,9 +142,8 @@ async function processFundingJob(jobId, jobs) {
 }
 
 function registerRoutes(app, { upload, jobs, createJobId }) {
-  // Salesforce opens this page via POST, passing apiKey in the body
   app.post("/funding-documents-upload/:recordid", fundingUploadMiddleware(upload), async (req, res) => {
-    // Page load: no files attached — Salesforce POSTs apiKey in body
+    // Page load: Salesforce POSTs apiKey with no files. File upload: files present.
     const labeled = collectFiles(req.files || {});
     if (labeled.length === 0) {
       const apiKey = req.body && req.body.apiKey;
@@ -155,11 +155,11 @@ function registerRoutes(app, { upload, jobs, createJobId }) {
       const html = htmlTemplate
         .replace("{{RECORD_ID}}", req.params.recordid)
         .replace("{{SESSION_TOKEN}}", sessionToken)
-        .replace("{{OWNER_ID}}", ownerId);
+        .replace("{{OWNER_ID}}", ownerId)
+        .replace("{{OFFER_REDIRECT_URL}}", buildOfferRedirectUrl(req.params.recordid));
       return res.send(html);
     }
 
-    // File upload: validate short-lived session token from X-API-Key header
     const session = consumeSessionToken(req.headers["x-api-key"]);
     if (!session) {
       return res.status(401).json({ success: false, error: "Invalid or expired session" });
@@ -186,7 +186,7 @@ function registerRoutes(app, { upload, jobs, createJobId }) {
     for (const { file, label } of labeled) {
       const baseName = file.originalname.replace(/\.[^.]+$/, "");
       const extension = path.extname(file.originalname).toLowerCase();
-      const originalName = label + "_" + baseName;
+      const originalName = `[Funding Offer - ${label}] ${baseName}`;
       const sizeMB = file.size / (1024 * 1024);
 
       const jobId = createJobId();
