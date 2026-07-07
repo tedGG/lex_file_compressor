@@ -1,11 +1,38 @@
 const path = require("path");
 const fs = require("fs");
 const crypto = require("crypto");
+const axios = require("axios");
 const salesforce = require("../salesforce");
 
 const htmlTemplate = fs.readFileSync(path.join(__dirname, "upload.html"), "utf8");
 
 const MAX_FILE_SIZE_MB = 50;
+
+// Upload a file to Salesforce as a ContentVersion linked to the given record.
+// Mirrors the working portal-submissions upload: JSON body + base64, no OwnerId.
+async function uploadContentVersion(basicUrl, title, fileBytes, { recordId, pathOnClient }) {
+  const accessToken = await salesforce.getToken(basicUrl);
+  const url = `${basicUrl}/services/data/v59.0/sobjects/ContentVersion`;
+
+  const body = {
+    Title: title,
+    PathOnClient: pathOnClient || title,
+    VersionData: Buffer.from(fileBytes).toString("base64"),
+    ...(recordId ? { FirstPublishLocationId: recordId } : {})
+  };
+
+  const response = await axios.post(url, body, {
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+      "Content-Type": "application/json"
+    },
+    maxContentLength: 300 * 1024 * 1024,
+    maxBodyLength: 300 * 1024 * 1024,
+    timeout: 120000
+  });
+
+  return response.data;
+}
 
 // Session tokens issued at page load: token -> { recordid, ownerId }
 const sessionTokens = new Map();
@@ -52,7 +79,7 @@ async function processFundingJob(jobId, jobs) {
   const job = jobs.get(jobId);
   if (!job) return;
 
-  const { basicurl, recordid, originalName, extension, ownerId } = job.params;
+  const { basicurl, recordid, originalName, extension } = job.params;
 
   try {
     const fileBytes = job.fileBytes;
@@ -62,10 +89,9 @@ async function processFundingJob(jobId, jobs) {
     job.progress = 50;
     console.log(`[funding][Job ${jobId}] Uploading "${originalName + extension}" to record ${recordid}`);
 
-    const saved = await salesforce.uploadFile(basicurl, originalName, fileBytes, {
-      parentId: recordid,
-      pathOnClient: originalName + extension,
-      ownerId
+    const saved = await uploadContentVersion(basicurl, originalName, fileBytes, {
+      recordId: recordid,
+      pathOnClient: originalName + extension
     });
 
     job.fileBytes = null;
