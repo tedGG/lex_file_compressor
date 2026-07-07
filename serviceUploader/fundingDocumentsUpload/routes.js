@@ -2,17 +2,35 @@ const path = require("path");
 const fs = require("fs");
 const crypto = require("crypto");
 const axios = require("axios");
-const salesforce = require("../salesforce");
 
 const htmlTemplate = fs.readFileSync(path.join(__dirname, "upload.html"), "utf8");
 
 const MAX_FILE_SIZE_MB = 50;
 
+// Sandbox Salesforce base URL used exclusively for funding document uploads
+const SF_BASE_URL = process.env.SANDBOX_SF_BASE_URL;
+
+// Get an access token for the sandbox org using dedicated funding credentials.
+async function getSandboxToken() {
+  const url = `${SF_BASE_URL}/services/oauth2/token`;
+
+  const params = new URLSearchParams();
+  params.append("grant_type", "client_credentials");
+  params.append("client_id", process.env.SANDBOX_CLIENT_ID_SF);
+  params.append("client_secret", process.env.SANDBOX_CLIENT_SECRET_SF);
+
+  const response = await axios.post(url, params, {
+    headers: { "Content-Type": "application/x-www-form-urlencoded" }
+  });
+  console.log("[funding] Sandbox access token received");
+  return response.data.access_token;
+}
+
 // Upload a file to Salesforce as a ContentVersion linked to the given record.
 // Mirrors the working portal-submissions upload: JSON body + base64, no OwnerId.
-async function uploadContentVersion(basicUrl, title, fileBytes, { recordId, pathOnClient }) {
-  const accessToken = await salesforce.getToken(basicUrl);
-  const url = `${basicUrl}/services/data/v59.0/sobjects/ContentVersion`;
+async function uploadContentVersion(title, fileBytes, { recordId, pathOnClient }) {
+  const accessToken = await getSandboxToken();
+  const url = `${SF_BASE_URL}/services/data/v59.0/sobjects/ContentVersion`;
 
   const body = {
     Title: title,
@@ -79,7 +97,7 @@ async function processFundingJob(jobId, jobs) {
   const job = jobs.get(jobId);
   if (!job) return;
 
-  const { basicurl, recordid, originalName, extension } = job.params;
+  const { recordid, originalName, extension } = job.params;
 
   try {
     const fileBytes = job.fileBytes;
@@ -89,7 +107,7 @@ async function processFundingJob(jobId, jobs) {
     job.progress = 50;
     console.log(`[funding][Job ${jobId}] Uploading "${originalName + extension}" to record ${recordid}`);
 
-    const saved = await uploadContentVersion(basicurl, originalName, fileBytes, {
+    const saved = await uploadContentVersion(originalName, fileBytes, {
       recordId: recordid,
       pathOnClient: originalName + extension
     });
@@ -143,13 +161,11 @@ function registerRoutes(app, { upload, jobs, createJobId }) {
       return res.status(401).json({ success: false, error: "Invalid or expired session" });
     }
 
-    const basicurl = process.env.SF_BASE_URL;
-    if (!basicurl) {
-      return res.status(500).json({ success: false, error: "SF_BASE_URL environment variable is not configured" });
+    if (!SF_BASE_URL) {
+      return res.status(500).json({ success: false, error: "SANDBOX_SF_BASE_URL environment variable is not configured" });
     }
 
     const recordid = session.recordid;
-    const ownerId = session.ownerId;
 
     const oversized = labeled.filter(({ file }) => file.size > MAX_FILE_SIZE_MB * 1024 * 1024);
     if (oversized.length > 0) {
@@ -177,7 +193,7 @@ function registerRoutes(app, { upload, jobs, createJobId }) {
         message: "Queued for upload",
         progress: 0,
         createdAt: Date.now(),
-        params: { basicurl, recordid, originalName, extension, ownerId },
+        params: { recordid, originalName, extension },
         fileBytes: new Uint8Array(file.buffer),
         originalSize: file.size
       };
