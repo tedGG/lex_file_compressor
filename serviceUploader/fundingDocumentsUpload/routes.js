@@ -7,12 +7,14 @@ const htmlTemplate = fs.readFileSync(path.join(__dirname, "upload.html"), "utf8"
 
 const MAX_FILE_SIZE_MB = 50;
 
-// Sandbox Salesforce base URL used exclusively for funding document uploads
-const SF_BASE_URL = process.env.SANDBOX_SF_BASE_URL;
+// Sandbox login endpoint used to request tokens (not the instance URL).
+// Override via SANDBOX_SF_BASE_URL if the sandbox uses a custom My Domain login host.
+const SF_LOGIN_URL = process.env.SANDBOX_SF_BASE_URL || "https://test.salesforce.com";
 
 // Get an access token for the sandbox org using dedicated funding credentials.
+// Returns { access_token, instance_url } — instance_url must be used for API calls.
 async function getSandboxToken() {
-  const url = `${SF_BASE_URL}/services/oauth2/token`;
+  const url = `${SF_LOGIN_URL}/services/oauth2/token`;
 
   const params = new URLSearchParams();
   params.append("grant_type", "client_credentials");
@@ -23,14 +25,14 @@ async function getSandboxToken() {
     headers: { "Content-Type": "application/x-www-form-urlencoded" }
   });
   console.log("[funding] Sandbox access token received");
-  return response.data.access_token;
+  return response.data;
 }
 
 // Upload a file to Salesforce as a ContentVersion linked to the given record.
 // Mirrors the working portal-submissions upload: JSON body + base64, no OwnerId.
 async function uploadContentVersion(title, fileBytes, { recordId, pathOnClient }) {
-  const accessToken = await getSandboxToken();
-  const url = `${SF_BASE_URL}/services/data/v59.0/sobjects/ContentVersion`;
+  const { access_token, instance_url } = await getSandboxToken();
+  const url = `${instance_url}/services/data/v59.0/sobjects/ContentVersion`;
 
   const body = {
     Title: title,
@@ -41,7 +43,7 @@ async function uploadContentVersion(title, fileBytes, { recordId, pathOnClient }
 
   const response = await axios.post(url, body, {
     headers: {
-      Authorization: `Bearer ${accessToken}`,
+      Authorization: `Bearer ${access_token}`,
       "Content-Type": "application/json"
     },
     maxContentLength: 300 * 1024 * 1024,
@@ -161,8 +163,8 @@ function registerRoutes(app, { upload, jobs, createJobId }) {
       return res.status(401).json({ success: false, error: "Invalid or expired session" });
     }
 
-    if (!SF_BASE_URL) {
-      return res.status(500).json({ success: false, error: "SANDBOX_SF_BASE_URL environment variable is not configured" });
+    if (!process.env.SANDBOX_CLIENT_ID_SF || !process.env.SANDBOX_CLIENT_SECRET_SF) {
+      return res.status(500).json({ success: false, error: "Sandbox Salesforce credentials are not configured" });
     }
 
     const recordid = session.recordid;
