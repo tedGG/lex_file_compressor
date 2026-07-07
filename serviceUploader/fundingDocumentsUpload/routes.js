@@ -15,6 +15,7 @@ const SF_LOGIN_URL = process.env.SANDBOX_SF_BASE_URL || "https://test.salesforce
 // Returns { access_token, instance_url } — instance_url must be used for API calls.
 async function getSandboxToken() {
   const url = `${SF_LOGIN_URL}/services/oauth2/token`;
+  console.log(`[funding] Requesting token from: ${url} (client_id ends ...${(process.env.SANDBOX_CLIENT_ID_SF || "").slice(-6)})`);
 
   const params = new URLSearchParams();
   params.append("grant_type", "client_credentials");
