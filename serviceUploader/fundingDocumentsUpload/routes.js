@@ -7,6 +7,22 @@ const htmlTemplate = fs.readFileSync(path.join(__dirname, "upload.html"), "utf8"
 
 const MAX_FILE_SIZE_MB = 50;
 
+function escapeHtml(str) {
+  return String(str)
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
+
+// Renders the Misc Docs description block, or an empty string when none was provided.
+function buildMiscDocsDescription(raw) {
+  const text = (raw || "").trim();
+  if (!text) return "";
+  return `<div class="field-desc">${escapeHtml(text)}</div>`;
+}
+
 // Must be the My Domain host (*.my.salesforce.com), NOT the Lightning host —
 // the OAuth token endpoint is only served on My Domain.
 const SF_LOGIN_URL = process.env.SANDBOX_SF_BASE_URL;
@@ -168,12 +184,15 @@ function registerRoutes(app, { upload, jobs, createJobId }) {
         }
       }
 
+      const miscDocsDescription = buildMiscDocsDescription(req.body && req.body.miscDocsDescription);
+
       const sessionToken = createSessionToken(req.params.recordid, ownerId, offer);
       const html = htmlTemplate
         .replace("{{RECORD_ID}}", req.params.recordid)
         .replace("{{SESSION_TOKEN}}", sessionToken)
         .replace("{{OWNER_ID}}", ownerId)
-        .replace("{{OFFER_REDIRECT_URL}}", buildOfferRedirectUrl(req.params.recordid, offer));
+        .replace("{{OFFER_REDIRECT_URL}}", buildOfferRedirectUrl(req.params.recordid, offer))
+        .replace("{{MISC_DOCS_DESCRIPTION}}", () => miscDocsDescription);
       return res.send(html);
     }
 
