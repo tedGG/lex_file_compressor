@@ -61,6 +61,7 @@ async function uploadContentVersion(title, fileBytes, { recordId, pathOnClient }
     Title: title,
     PathOnClient: pathOnClient || title,
     VersionData: Buffer.from(fileBytes).toString("base64"),
+    File_Section__c: "Closing Documents",
     ...(recordId ? { FirstPublishLocationId: recordId } : {})
   };
 
