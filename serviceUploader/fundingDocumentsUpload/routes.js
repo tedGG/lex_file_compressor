@@ -25,7 +25,7 @@ function buildMiscDocsDescription(raw) {
 
 // Must be the My Domain host (*.my.salesforce.com), NOT the Lightning host —
 // the OAuth token endpoint is only served on My Domain.
-const SF_LOGIN_URL = process.env.SANDBOX_SF_BASE_URL;
+const SF_LOGIN_URL = process.env.SF_BASE_URL;
 
 const OFFER_REDIRECT_BASE_URL = process.env.FUNDING_OFFER_URL || "";
 
@@ -39,13 +39,13 @@ function buildOfferRedirectUrl(recordId, offer) {
 }
 
 // Returns { access_token, instance_url } — instance_url must be used for API calls.
-async function getSandboxToken() {
+async function getAccessToken() {
   const url = `${SF_LOGIN_URL}/services/oauth2/token`;
 
   const params = new URLSearchParams();
   params.append("grant_type", "client_credentials");
-  params.append("client_id", process.env.SANDBOX_CLIENT_ID_SF);
-  params.append("client_secret", process.env.SANDBOX_CLIENT_SECRET_SF);
+  params.append("client_id", process.env.CLIENT_ID_SF);
+  params.append("client_secret", process.env.CLIENT_SECRET_SF);
 
   const response = await axios.post(url, params, {
     headers: { "Content-Type": "application/x-www-form-urlencoded" }
@@ -54,7 +54,7 @@ async function getSandboxToken() {
 }
 
 async function uploadContentVersion(title, fileBytes, { recordId, pathOnClient }) {
-  const { access_token, instance_url } = await getSandboxToken();
+  const { access_token, instance_url } = await getAccessToken();
   const url = `${instance_url}/services/data/v59.0/sobjects/ContentVersion`;
 
   const body = {
@@ -202,8 +202,8 @@ function registerRoutes(app, { upload, jobs, createJobId }) {
       return res.status(401).json({ success: false, error: "Invalid or expired session" });
     }
 
-    if (!process.env.SANDBOX_CLIENT_ID_SF || !process.env.SANDBOX_CLIENT_SECRET_SF) {
-      return res.status(500).json({ success: false, error: "Sandbox Salesforce credentials are not configured" });
+    if (!process.env.CLIENT_ID_SF || !process.env.CLIENT_SECRET_SF) {
+      return res.status(500).json({ success: false, error: "Salesforce credentials are not configured" });
     }
 
     const recordid = session.recordid;
