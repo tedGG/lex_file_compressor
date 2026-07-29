@@ -24,9 +24,50 @@ const jobs = new Map();
 // Batch tracking for grouped upload jobs
 const batches = new Map();
 
+// Page count is advisory only — it picks the sync/async path and is echoed back to
+// the caller. Ghostscript and MuPDF both handle files pdf-lib cannot read, so a
+// parse failure here must never fail the request.
+//
+// MuPDF goes first because pdf-lib (1.17.x) cannot decrypt: bank statements are
+// routinely RC4-encrypted with an owner password and an empty user password, and
+// on those `ignoreEncryption: true` only suppresses the encryption error — pdf-lib
+// then reads ciphertext as plaintext and dies on an unresolvable /Pages ref.
+// MuPDF decrypts them, and also repairs damaged xref tables.
 async function getPdfPageCount(pdfBuffer) {
-  const doc = await PDFDocument.load(pdfBuffer, { ignoreEncryption: true });
-  return doc.getPageCount();
+  try {
+    const count = await getPdfPageCountWithMupdf(pdfBuffer);
+    if (count !== null) return count;
+    console.warn("MuPDF reported no readable pages — trying pdf-lib");
+  } catch (mupdfErr) {
+    console.warn(`MuPDF could not read page count (${mupdfErr.message}) — trying pdf-lib`);
+  }
+
+  try {
+    const doc = await PDFDocument.load(pdfBuffer, { ignoreEncryption: true });
+    return validPageCount(doc.getPageCount());
+  } catch (pdfLibErr) {
+    console.warn(`pdf-lib could not read page count either (${pdfLibErr.message}) — continuing without it`);
+  }
+  return null;
+}
+
+// MuPDF reports 0 pages for a document whose page tree it could not recover
+// instead of throwing, so a non-positive count means "unknown", not "empty".
+function validPageCount(count) {
+  return Number.isInteger(count) && count > 0 ? count : null;
+}
+
+async function getPdfPageCountWithMupdf(pdfBuffer) {
+  if (!mupdfModule) {
+    mupdfModule = await import("mupdf");
+  }
+
+  const doc = mupdfModule.Document.openDocument(Buffer.from(pdfBuffer), "application/pdf");
+  try {
+    return validPageCount(doc.countPages());
+  } finally {
+    if (typeof doc.destroy === "function") doc.destroy();
+  }
 }
 
 function createJobId() {
@@ -134,10 +175,12 @@ app.post("/compress", async (req, res) => {
     const originalSize = pdfBuffer.byteLength;
     const sizeMB = originalSize / (1024 * 1024);
     const pageCount = await getPdfPageCount(pdfBuffer);
-    console.log(`Original size: ${(originalSize / 1024).toFixed(1)} KB (${sizeMB.toFixed(1)} MB), ${pageCount} page(s)`);
+    const pageLabel = pageCount === null ? "page count unavailable" : `${pageCount} page(s)`;
+    console.log(`Original size: ${(originalSize / 1024).toFixed(1)} KB (${sizeMB.toFixed(1)} MB), ${pageLabel}`);
 
-    // For files >= 20MB or > 30 pages, use async processing
-    if (sizeMB >= 20 || pageCount > 30) {
+    // For files >= 20MB or > 30 pages, use async processing.
+    // With an unknown page count, size alone decides.
+    if (sizeMB >= 20 || (pageCount !== null && pageCount > 30)) {
       const jobId = createJobId();
       const job = {
         id: jobId,
