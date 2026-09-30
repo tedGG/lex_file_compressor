@@ -246,6 +246,7 @@ function registerRoutes(app, { upload, jobs, createJobId }) {
 
     // Wait until every file is saved in Salesforce before responding, so the page only
     // redirects back to the offer (which accepts it) once all documents are there.
+    const uploadStartedAt = Date.now();
     await Promise.all(queued.map(({ job }) => processFundingJob(job.id, jobs)));
 
     // Same order as the files were sent — the page relies on it to know which ones to retry.
@@ -269,6 +270,7 @@ function registerRoutes(app, { upload, jobs, createJobId }) {
       });
     }
 
+    console.log(`[funding] All ${results.length} file(s) saved in Salesforce for record ${recordid} in ${Date.now() - uploadStartedAt} ms — page will redirect now`);
     res.json({ success: true, results });
   });
 
