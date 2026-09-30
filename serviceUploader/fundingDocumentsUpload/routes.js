@@ -78,6 +78,49 @@ async function uploadContentVersion(title, fileBytes, { recordId, pathOnClient }
   return response.data;
 }
 
+const LINK_CHECK_ATTEMPTS = 5;
+const LINK_CHECK_DELAY_MS = 1000;
+
+function soqlString(value) {
+  return `'${String(value).replace(/\\/g, "\\\\").replace(/'/g, "\\'")}'`;
+}
+
+// Looks the files up the same way the offer page's email does (files linked to the record),
+// limited to the versions just uploaded. Returns the ContentVersion Ids found on the record.
+async function findVersionsOnRecord(recordId, contentVersionIds) {
+  const { access_token, instance_url } = await getAccessToken();
+  const soql =
+    "SELECT ContentDocument.LatestPublishedVersionId FROM ContentDocumentLink" +
+    ` WHERE LinkedEntityId = ${soqlString(recordId)}` +
+    ` AND ContentDocument.LatestPublishedVersionId IN (${contentVersionIds.map(soqlString).join(", ")})`;
+
+  const response = await axios.get(`${instance_url}/services/data/v59.0/query`, {
+    params: { q: soql },
+    headers: { Authorization: `Bearer ${access_token}` },
+    timeout: 30000
+  });
+
+  return new Set(response.data.records.map((r) => r.ContentDocument.LatestPublishedVersionId));
+}
+
+// Asks Salesforce until every uploaded file shows up on the record. Returns false if some
+// still don't after LINK_CHECK_ATTEMPTS tries.
+async function waitForFilesOnRecord(recordId, contentVersionIds) {
+  for (let attempt = 1; attempt <= LINK_CHECK_ATTEMPTS; attempt++) {
+    const found = await findVersionsOnRecord(recordId, contentVersionIds);
+    const missing = contentVersionIds.filter((id) => !found.has(id));
+    if (missing.length === 0) {
+      console.log(`[funding] Salesforce confirms ${contentVersionIds.length} file(s) on record ${recordId} (check ${attempt})`);
+      return true;
+    }
+    console.warn(`[funding] ${missing.length} file(s) not on record ${recordId} yet (check ${attempt}): ${missing.join(", ")}`);
+    if (attempt < LINK_CHECK_ATTEMPTS) {
+      await new Promise((resolve) => setTimeout(resolve, LINK_CHECK_DELAY_MS));
+    }
+  }
+  return false;
+}
+
 const sessionTokens = new Map();
 
 function createSessionToken(recordid, ownerId, offer) {
@@ -268,6 +311,19 @@ function registerRoutes(app, { upload, jobs, createJobId }) {
         error: `Couldn't upload: ${failed.map((r) => r.fileName).join(", ")}. Please try again.`,
         results
       });
+    }
+
+    // Before redirecting (which accepts the offer and sends the email), confirm with Salesforce
+    // that the files are on the record. If it can't be confirmed, redirect anyway: the files are
+    // saved, and failing here would leave the merchant unable to accept the offer.
+    const contentVersionIds = queued.map(({ job }) => job.result.contentVersionId);
+    try {
+      const confirmed = await waitForFilesOnRecord(recordid, contentVersionIds);
+      if (!confirmed) {
+        console.error(`[funding] Could not confirm all files on record ${recordid} — redirecting anyway`);
+      }
+    } catch (err) {
+      console.error(`[funding] File check failed for record ${recordid}: ${err.message} — redirecting anyway`, err.response?.data ? JSON.stringify(err.response.data) : "");
     }
 
     console.log(`[funding] All ${results.length} file(s) saved in Salesforce for record ${recordid} in ${Date.now() - uploadStartedAt} ms — page will redirect now`);
