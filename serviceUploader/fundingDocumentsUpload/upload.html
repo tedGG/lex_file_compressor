@@ -59,6 +59,7 @@
     .upload-overlay.visible { display: flex; }
     .upload-overlay-spinner { width: 44px; height: 44px; border: 4px solid #eee; border-top-color: #111; border-radius: 50%; animation: spin 0.7s linear infinite; }
     .upload-overlay-text { font-size: 14px; font-weight: 600; color: #111; }
+    .upload-overlay-hint { font-size: 12px; color: #666; margin-top: -8px; }
   </style>
 </head>
 <body>
@@ -66,6 +67,7 @@
   <div class="upload-overlay" id="uploadOverlay">
     <div class="upload-overlay-spinner"></div>
     <div class="upload-overlay-text">Uploading your documents...</div>
+    <div class="upload-overlay-hint">This can take a minute for large files. Please keep this page open.</div>
   </div>
   <div class="logo"><img src="/logo.png" alt="Company Logo"></div>
   <div class="card">
@@ -259,22 +261,21 @@
 
       const comments = document.getElementById('commentsInput').value.trim();
 
+      // Order matters: the server returns results in this same order.
+      const sent = [];
+      if (singles.dl) sent.push({ key: 'dl', field: 'driverLicense', file: singles.dl });
+      if (singles.vc) sent.push({ key: 'vc', field: 'voidedCheck', file: singles.vc });
+      miscFiles.forEach(f => sent.push({ key: 'misc', field: 'miscDocs', file: f }));
+
       const fd = new FormData();
-      if (singles.dl)  fd.append('driverLicense', singles.dl);
-      if (singles.vc)  fd.append('voidedCheck', singles.vc);
-      miscFiles.forEach(f => fd.append('miscDocs', f));
+      sent.forEach(s => fd.append(s.field, s.file));
 
       try {
         const res = await fetch('/funding-documents-upload/' + recordid, { method: 'POST', body: fd, headers });
         const data = await res.json();
 
-        submitBtn.textContent = 'Upload';
-        submitBtn.disabled = false;
-        singles.dl = null; singles.vc = null; miscFiles = [];
-        clearSingle('dl'); clearSingle('vc'); renderMisc();
-
         if (data.success) {
-          // Redirect back to the offer page, which shows its own success message
+          // Every file is saved in Salesforce — redirect back to the offer page, which shows its own success message
           if (offerRedirectUrl) {
             let redirectUrl = offerRedirectUrl;
             if (comments) redirectUrl += '&comments=' + encodeURIComponent(comments);
@@ -287,10 +288,21 @@
           document.getElementById('uploadForm').style.display = 'none';
           document.getElementById('successView').classList.add('visible');
           data.results.forEach(r => pollJobStatus(r.jobId, r.fileName));
-        } else {
-          overlay.classList.remove('visible');
-          showToast('error', 'Upload Failed', data.error || 'Upload failed.');
+          return;
         }
+
+        // Not everything was saved — stay here so the merchant can retry. Drop the files
+        // that did upload so a retry only re-sends the failed ones (no duplicates in Salesforce).
+        (data.results || []).forEach((r, i) => {
+          if (!r.success || !sent[i]) return;
+          if (sent[i].key === 'misc') miscFiles = miscFiles.filter(f => f !== sent[i].file);
+          else clearSingle(sent[i].key);
+        });
+        renderMisc();
+        submitBtn.textContent = 'Upload';
+        updateSubmitState();
+        overlay.classList.remove('visible');
+        showToast('error', 'Upload Failed', data.error || 'Upload failed.');
       } catch (err) {
         submitBtn.textContent = 'Upload';
         submitBtn.disabled = false;

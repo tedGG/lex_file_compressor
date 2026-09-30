@@ -219,7 +219,7 @@ function registerRoutes(app, { upload, jobs, createJobId }) {
     const totalSize = labeled.reduce((sum, { file }) => sum + file.size, 0);
     console.log(`[funding] Uploading ${labeled.length} file(s) (${(totalSize / 1024 / 1024).toFixed(1)} MB total) to record ${recordid}`);
 
-    const results = [];
+    const queued = [];
     for (const { file, label } of labeled) {
       const baseName = file.originalname.replace(/\.[^.]+$/, "");
       const extension = path.extname(file.originalname).toLowerCase();
@@ -241,15 +241,31 @@ function registerRoutes(app, { upload, jobs, createJobId }) {
       jobs.set(jobId, job);
 
       console.log(`[funding][Job ${jobId}] [${label}] "${file.originalname}" (${sizeMB.toFixed(1)} MB)`);
-      setImmediate(() => processFundingJob(jobId, jobs));
+      queued.push({ job, file, label });
+    }
 
-      results.push({
-        success: true,
-        fileName: file.originalname,
-        label,
-        jobId,
-        statusUrl: `/funding-documents-upload/status/${jobId}`,
-        originalSize: file.size
+    // Wait until every file is saved in Salesforce before responding, so the page only
+    // redirects back to the offer (which accepts it) once all documents are there.
+    await Promise.all(queued.map(({ job }) => processFundingJob(job.id, jobs)));
+
+    // Same order as the files were sent — the page relies on it to know which ones to retry.
+    const results = queued.map(({ job, file, label }) => ({
+      success: job.status === "completed",
+      fileName: file.originalname,
+      label,
+      jobId: job.id,
+      statusUrl: `/funding-documents-upload/status/${job.id}`,
+      originalSize: file.size,
+      ...(job.error ? { error: job.error } : {})
+    }));
+
+    const failed = results.filter((r) => !r.success);
+    if (failed.length > 0) {
+      console.error(`[funding] ${failed.length} of ${results.length} file(s) failed for record ${recordid}`);
+      return res.status(502).json({
+        success: false,
+        error: `Couldn't upload: ${failed.map((r) => r.fileName).join(", ")}. Please try again.`,
+        results
       });
     }
 
