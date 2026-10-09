@@ -586,11 +586,13 @@ app.get("/documents-upload/:recordid", (req, res) => {
   }
 
   const ownerId = req.query.ownerId || '';
+  const uploadType = req.query.type === 'closing-docs' ? 'closing-docs' : '';
 
   const html = uploadHtmlTemplate
     .replace('{{RECORD_ID}}', req.params.recordid)
     .replace('{{API_KEY}}', apiKey || '')
-    .replace('{{OWNER_ID}}', ownerId);
+    .replace('{{OWNER_ID}}', ownerId)
+    .replace('{{UPLOAD_TYPE}}', uploadType);
   res.send(html);
 });
 
@@ -616,6 +618,8 @@ app.post("/documents-upload/:recordid", upload.array("files", 10), async (req, r
   }
 
   const ownerId = req.headers['x-owner-id'] || '';
+  // Only closing-docs uploads get a File_Section__c on the ContentVersion
+  const fileSection = req.headers['x-upload-type'] === 'closing-docs' ? 'Closing Documents' : '';
 
   console.log(`Uploading ${req.files.length} file(s) (${(totalSize / 1024 / 1024).toFixed(1)} MB total) to record ${recordid}`);
 
@@ -642,7 +646,7 @@ app.post("/documents-upload/:recordid", upload.array("files", 10), async (req, r
       progress: 0,
       createdAt: Date.now(),
       batchId,
-      params: { basicurl, recordid, originalName, extension, needsCompression, ownerId },
+      params: { basicurl, recordid, originalName, extension, needsCompression, ownerId, fileSection },
       fileBytes: new Uint8Array(file.buffer),
       originalSize: file.size
     };
@@ -668,7 +672,7 @@ async function processUploadJob(jobId) {
   const job = jobs.get(jobId);
   if (!job) return;
 
-  const { basicurl, recordid, originalName, extension, needsCompression, ownerId } = job.params;
+  const { basicurl, recordid, originalName, extension, needsCompression, ownerId, fileSection } = job.params;
 
   try {
     let fileBytes = job.fileBytes;
@@ -710,7 +714,8 @@ async function processUploadJob(jobId) {
       {
         parentId: recordid,
         pathOnClient: originalName + extension,
-        ownerId
+        ownerId,
+        fileSection
       }
     );
 

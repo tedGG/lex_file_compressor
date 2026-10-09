@@ -112,7 +112,7 @@ class SalesforceConnection {
     console.log(`Updated ${sObjectType} ${recordId}:`, fields);
   }
 
-  async uploadFile(basicUrl, title, fileBytes, { parentId, pathOnClient, ownerId }) {
+  async uploadFile(basicUrl, title, fileBytes, { parentId, pathOnClient, ownerId, fileSection }) {
     const accessToken = await this.getToken(basicUrl);
     const url = `${basicUrl}/services/data/v58.0/sobjects/ContentVersion`;
 
@@ -122,6 +122,9 @@ class SalesforceConnection {
     }
     if (ownerId) {
       metadata.OwnerId = ownerId;
+    }
+    if (fileSection) {
+      metadata.File_Section__c = fileSection;
     }
 
     const form = new FormData();

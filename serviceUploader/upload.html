@@ -81,6 +81,7 @@
     const recordid = '{{RECORD_ID}}';
     const apiKey = '{{API_KEY}}';
     const ownerId = '{{OWNER_ID}}';
+    const uploadType = '{{UPLOAD_TYPE}}';
     const dropZone = document.getElementById('dropZone');
     const fileInput = document.getElementById('fileInput');
     const fileList = document.getElementById('fileList');
@@ -203,6 +204,7 @@
         const headers = {};
         if (apiKey) headers['X-API-Key'] = apiKey;
         if (ownerId) headers['X-Owner-Id'] = ownerId;
+        if (uploadType) headers['X-Upload-Type'] = uploadType;
         const res = await fetch('/documents-upload/' + recordid, { method: 'POST', body: fd, headers });
         const data = await res.json();
 
